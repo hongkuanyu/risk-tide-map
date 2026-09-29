@@ -56,6 +56,7 @@
       this.map = null;
       this.container = null;
       this.canvasStage = null;
+      this.endpoints = { campus: config.endpoints.campus, station: config.endpoints.station };
       this.markers = {};
       this.route = null;
       this.routePreview = true;
@@ -244,7 +245,7 @@
 
     addMarkers() {
       if (!this.map) return;
-      const endpoints = config.endpoints;
+      const endpoints = this.endpoints;
 
       const campusElement = document.createElement('div');
       campusElement.className = 'map-marker campus-marker';
@@ -265,6 +266,27 @@
         .addTo(this.map);
     }
 
+    setEndpoints(endpoints) {
+      if (!endpoints) return;
+      if (endpoints.campus) this.endpoints.campus = endpoints.campus;
+      if (endpoints.station) this.endpoints.station = endpoints.station;
+      if (!this.map || !this.ready) return;
+      this.repositionMarkers();
+      // Rebuild the preview geometry from the new endpoints so the map and
+      // the particle flow both move immediately, before the router answers.
+      this.setRoute(null);
+      this.fitRoute();
+    }
+
+    repositionMarkers() {
+      if (!this.markers.campus || !this.markers.station) return;
+      this.markers.campus.setLngLat(this.endpoints.campus.coordinate);
+      this.markers.station.setLngLat(this.endpoints.station.coordinate);
+      const campusLabel = this.markers.campus.getElement().querySelector('.marker-label');
+      const stationLabel = this.markers.station.getElement().querySelector('.marker-label');
+      if (campusLabel) campusLabel.textContent = this.endpoints.campus.shortName || this.endpoints.campus.name || '起点';
+      if (stationLabel) stationLabel.textContent = this.endpoints.station.shortName || this.endpoints.station.name || '终点';
+    }
     toGeoJSON(coordinates) {
       return {
         type: 'FeatureCollection',
@@ -277,7 +299,7 @@
     }
 
     setRoute(route) {
-      const geometry = routeGeometry(route, config.endpoints);
+      const geometry = routeGeometry(route, this.endpoints);
       this.route = geometry.coordinates;
       this.routePreview = geometry.preview;
       this.updateFallbackOverlay();
@@ -456,6 +478,8 @@
   global.RiskTideMap = RiskTideMap;
   global.RiskTideMapUtils = { riskColor: riskColor, mixRgb: mixRgb };
 })(window);
+
+
 
 
 
