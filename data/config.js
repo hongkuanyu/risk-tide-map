@@ -52,7 +52,7 @@
       securityJsCode: 'aba2b2cd55058232eef8d45e0e62f72e',
       version: '2.0',
       city: '无锡',
-      mapStyle: 'amap://styles/darkblue',
+      mapStyle: 'amap://styles/normal',
       zoom: 12,
       minZoom: 9,
       maxZoom: 18,

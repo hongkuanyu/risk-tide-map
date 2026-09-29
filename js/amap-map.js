@@ -283,9 +283,10 @@
 
     fitRoute() {
       if (!this.map || !this.route || this.route.length < 2) return;
-      const source = this.routeCoordinatesGcj || this.route.map(toGcj);
-      const overlays = source.map(function (point) { return new AMap.LngLat(point[0], point[1]); });
-      this.map.setFitView(overlays, false, [90, 50, 240, 50], 13);
+      const overlays = [this.routeHalo, this.routePolyline, this.markers.campus, this.markers.station].filter(Boolean);
+      if (overlays.length) {
+        this.map.setFitView(overlays, false, [90, 50, 240, 50], 13);
+      }
     }
 
     setRisk(risk) {
