@@ -1,0 +1,4 @@
+MOBILE_URL.txt 
+*.log 
+node_modules/ 
+.edge-*/ 

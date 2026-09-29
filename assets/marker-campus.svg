@@ -1,0 +1,12 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 52" role="img" aria-label="无锡学院标记">
+  <defs>
+    <filter id="glow" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="2.2" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <path d="M20 3C11.2 3 4 10.1 4 18.8c0 11.4 16 29.1 16 29.1s16-17.7 16-29.1C36 10.1 28.8 3 20 3Z" fill="#061416" stroke="#83f5f4" stroke-width="2" filter="url(#glow)"/>
+  <circle cx="20" cy="18.5" r="8" fill="#0b5b62" stroke="#d8ffff" stroke-width="1.2"/>
+  <path d="M15 18.5h10M20 13.5v10" stroke="#aaf8f3" stroke-width="1.4" stroke-linecap="round"/>
+  <circle cx="20" cy="18.5" r="2.4" fill="#efffff"/>
+</svg>
