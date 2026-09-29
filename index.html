@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#efe8dc">
   <meta name="description" content="风险潮汐：把出行时间压力变成可见的水墨粒子流。">
   <title>风险潮汐 · 全国时间风险地图</title>
-  <link rel="stylesheet" href="vendor/maplibre-gl.css?v=33">
-  <link rel="stylesheet" href="styles.css?v=33">
+  <link rel="stylesheet" href="vendor/maplibre-gl.css?v=34">
+  <link rel="stylesheet" href="styles.css?v=34">
 </head>
 <body>
   <div class="app-shell" id="app-shell">
@@ -127,8 +127,8 @@
             </label>
             <div class="field range-field">
               <span>计划出发时间 <strong id="departure-label">16:00</strong></span>
-              <input id="departure-slider" type="range" min="0" max="120" step="5" value="120" aria-label="计划出发时间距离发车 / 开始的时间">
-              <div class="range-meta"><span>最早</span><span>可用时间 <b id="available-label">120 分钟</b></span><span>发车 / 开始</span></div>
+              <input id="departure-slider" type="range" min="0" max="720" step="5" value="120" aria-label="计划出发时间距离发车 / 开始的时间">
+              <div class="range-meta"><span>最早</span><span>可用时间 <input class="available-time-input" id="available-minutes" type="number" min="5" max="720" step="5" value="120" inputmode="numeric" aria-label="自定义可用时间（分钟）"> 分钟</span><span>发车 / 开始</span></div>
             </div>
           </div>
         </section>
@@ -182,20 +182,23 @@
   </div>
 
   <noscript>此页面需要 JavaScript 才能运行水墨星云粒子与风险计算。</noscript>
-  <script src="vendor/maplibre-gl.js?v=33"></script>
-  <script src="data/config.js?v=33"></script>
-  <script src="data/routes.js?v=33"></script>
-  <script src="js/risk.js?v=33"></script>
-  <script src="js/flow-field.js?v=33"></script>
-  <script src="js/map.js?v=33"></script>
-  <script src="js/amap-map.js?v=33"></script>
-  <script src="js/particles.js?v=33"></script>
-  <script src="js/warm-ui.js?v=33"></script>
-  <script src="js/location-search.js?v=33"></script>
-  <script src="js/ui.js?v=33"></script>
-  <script src="js/app.js?v=33"></script>
+  <script src="vendor/maplibre-gl.js?v=34"></script>
+  <script src="data/config.js?v=34"></script>
+  <script src="data/routes.js?v=34"></script>
+  <script src="js/risk.js?v=34"></script>
+  <script src="js/flow-field.js?v=34"></script>
+  <script src="js/map.js?v=34"></script>
+  <script src="js/amap-map.js?v=34"></script>
+  <script src="js/particles.js?v=34"></script>
+  <script src="js/warm-ui.js?v=34"></script>
+  <script src="js/location-search.js?v=34"></script>
+  <script src="js/ui.js?v=34"></script>
+  <script src="js/app.js?v=34"></script>
 </body>
 </html>
+
+
+
 
 
 

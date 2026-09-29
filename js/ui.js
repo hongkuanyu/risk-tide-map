@@ -41,6 +41,7 @@
         departureSlider: document.getElementById('departure-slider'),
         departureLabel: document.getElementById('departure-label'),
         availableLabel: document.getElementById('available-label'),
+        availableMinutes: document.getElementById('available-minutes'),
         buffer: document.getElementById('result-buffer'),
         risk: document.getElementById('result-risk'),
         latest: document.getElementById('result-latest'),
@@ -78,6 +79,16 @@
         self.syncDeparture();
         emit();
       });
+      if (this.elements.availableMinutes) {
+        this.elements.availableMinutes.addEventListener('change', function () {
+          const raw = Number(self.elements.availableMinutes.value);
+          const safe = Number.isFinite(raw) ? Math.min(720, Math.max(5, Math.round(raw))) : self.state.departureOffset;
+          self.state.departureOffset = safe;
+          self.elements.availableMinutes.value = String(safe);
+          self.syncDeparture();
+          emit();
+        });
+      }
       this.elements.routeMinutes.addEventListener('input', function () {
         self.state.routeMinutes = numberOrNull(self.elements.routeMinutes.value);
         emit();
@@ -178,7 +189,13 @@
     syncDeparture() {
       this.state.departureTime = riskModel.addMinutes(this.state.trainTime, -this.state.departureOffset);
       this.elements.departureLabel.textContent = this.state.departureTime;
-      this.elements.availableLabel.textContent = this.state.departureOffset + ' 分钟';
+      if (this.elements.availableLabel) this.elements.availableLabel.textContent = this.state.departureOffset + ' 分钟';
+      if (this.elements.availableMinutes && document.activeElement !== this.elements.availableMinutes) {
+        this.elements.availableMinutes.value = String(this.state.departureOffset);
+      }
+      if (this.elements.departureSlider && !this.elements.departureSlider.matches(':active')) {
+        this.elements.departureSlider.value = String(this.state.departureOffset);
+      }
     }
 
     getState() {
@@ -260,6 +277,10 @@
 
   global.RiskTideUI = RiskTideUI;
 })(window);
+
+
+
+
 
 
 
