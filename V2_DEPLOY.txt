@@ -1,0 +1,21 @@
+Risk Tide Map — Particle Flow V2 integrated
+
+Already connected:
+- js/particles-v2.js
+- index.html loads it after particles.js and before app.js
+
+V2 effects:
+- Natural tidal flow
+- Risk-driven turbulence
+- Hover particle wake/highlight
+- Click water ripple
+- Route resonance wave
+- Existing particle performance adaptation preserved
+
+Deploy:
+Upload the CONTENTS of this project folder to the same GitHub Pages repository,
+replacing the existing files. GitHub Pages will rebuild automatically.
+
+Rollback:
+Remove the particles-v2.js script line from index.html. The original particles.js
+engine remains unchanged.
