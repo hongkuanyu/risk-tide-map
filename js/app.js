@@ -116,10 +116,15 @@
       ui.setStatus('粒子序章播放中 · ' + secondsLeft + ' 秒后开放操作', 'normal');
       if (progress >= 1) {
         showcaseActive = false;
+        showcaseActive = false;
         ui.setShowcase(false, 1);
-        ui.setStatus('演示结束。请输入人工核验的路线时间开始风险计算。', 'normal');
-        applyState(ui.getState());
-        return;
+        if (!ui.getState().mode) {
+          ui.selectMode('taxi');
+          ui.setStatus('演示结束，已自动选择网约车。拖动出发时间即可看到粒子颜色随风险变化。', 'normal');
+        } else {
+          ui.setStatus('演示结束。拖动出发时间即可测试粒子风险颜色。', 'normal');
+          applyState(ui.getState());
+        }
       }
       showcaseFrame = global.requestAnimationFrame(showcaseTick);
     }
