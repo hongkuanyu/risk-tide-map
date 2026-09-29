@@ -123,6 +123,43 @@ taxi: {
 
 时间差使用 24 小时循环计算，因此支持跨天；例如 `23:40 → 00:20` 会按 40 分钟计算。
 
+
+## 高德地图 API 配置
+
+项目已内置高德地图适配层，未填写 Key 时自动使用原有 OpenStreetMap 降级底图。
+
+编辑 `data/config.js`：
+
+```js
+amap: {
+  enabled: true,
+  key: '你的 Web端 JS API Key',
+  securityJsCode: '你的 securityJsCode',
+  mapStyle: 'amap://styles/darkblue'
+}
+```
+
+然后在高德开放平台控制台配置安全域名。GitHub Pages 需要加入：
+
+```text
+hongkuanyu.github.io
+```
+
+本地开发可加入：
+
+```text
+localhost
+```
+
+启用后会使用：
+
+- 高德地图底图
+- 高德驾车路线规划：时间优先、距离优先、少收费
+- 高德公交换乘路线规划
+- 高德地图坐标与原有 Canvas 水墨粒子联动
+
+前端 Map JS API Key 本身会出现在浏览器源代码中，这是高德 JS API 的正常方式；必须使用域名白名单限制，不能使用无限制的 Key。
+
 ## 粒子数量规则
 
 粒子系统按屏幕宽度、CPU 核心数、设备内存和 `prefers-reduced-motion` 自适应。
@@ -207,7 +244,7 @@ risk-tide-map/
 ├── .nojekyll
 ├── js/
 │   ├── app.js
-│   ├── map.js
+│   ├── map.js`n│   ├── amap-map.js
 │   ├── particles.js
 │   ├── flow-field.js
 │   ├── risk.js
@@ -233,6 +270,8 @@ risk-tide-map/
 - OSM 底图是公共栅格瓦片，访问量较大时应遵循 OSM 瓦片使用政策并自行选择合规瓦片服务。
 - 当前端点坐标和路线时间必须在真实使用前替换。
 - 本页面不包含用户账号、后端、数据库或任何实时交通接口。
+
+
 
 
 

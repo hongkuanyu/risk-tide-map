@@ -24,7 +24,9 @@
   }
 
   function createApp() {
-    const mapController = new global.RiskTideMap();
+    const useAmap = !!(config.amap && config.amap.enabled && config.amap.key && global.RiskTideAmapMap);
+    const amapMissingKey = !!(config.amap && config.amap.enabled && !config.amap.key);
+    const mapController = useAmap ? new global.RiskTideAmapMap() : new global.RiskTideMap();
     const particleCanvas = document.getElementById('particle-canvas');
     const particles = new global.RiskTideParticles(particleCanvas, mapController);
     const ui = new global.RiskTideUI(global.routes);
@@ -81,10 +83,20 @@
       },
       onStatus: function (status) {
         if (status.state === 'ready') {
-          ui.setStatus('OSM 底图已加载 · 路线为待核对预览', 'normal');
+          particles.resize();
+          particles.routeDirty = true;
+          ui.setStatus('地图底图已加载 · 路线规划同步中', 'normal');
         } else {
           ui.setStatus(status.message || '地图已降级，粒子仍持续流动。', 'warning');
         }
+      },
+      onRoutesReady: function (plannedRoutes) {
+        Object.keys(plannedRoutes).forEach(function (key) {
+          global.routes[key] = plannedRoutes[key];
+        });
+        ui.refreshRoutes();
+        lastRouteKey = null;
+        applyState(ui.getState());
       }
     }).then(function () {
       mapController.setRoute(getSelectedRoute(ui.getState()));
@@ -162,5 +174,8 @@
     createApp();
   }
 })(window);
+
+
+
 
 

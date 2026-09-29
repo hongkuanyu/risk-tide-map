@@ -46,6 +46,23 @@
       routePaddingMobile: { top: 28, right: 18, bottom: 28, left: 18 }
     },
 
+    amap: {
+      enabled: true,
+      key: '',
+      securityJsCode: '',
+      version: '2.0',
+      city: '无锡',
+      mapStyle: 'amap://styles/darkblue',
+      zoom: 12,
+      minZoom: 9,
+      maxZoom: 18,
+      autoRoute: true,
+      drivingVariants: [
+        { id: 'amap-fast', label: '高德·时间优先', policy: 'LEAST_TIME' },
+        { id: 'amap-short', label: '高德·距离优先', policy: 'LEAST_DISTANCE' },
+        { id: 'amap-fee', label: '高德·少收费', policy: 'LEAST_FEE' }
+      ]
+    },
     showcase: {
       durationMs: 12000,
       timeline: [
@@ -99,6 +116,8 @@
 
   global.RiskTideConfig = config;
 })(window);
+
+
 
 
 

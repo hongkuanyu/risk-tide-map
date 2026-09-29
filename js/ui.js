@@ -151,6 +151,25 @@
       this.onChange(this.getState());
     }
 
+    refreshRoutes() {
+      const route = this.state.mode ? this.routeMap[this.state.mode] : null;
+      if (!route) { this.update(); return; }
+      this.populateVariants(route);
+      if (route.variants && route.variants.length) {
+        const exists = route.variants.some(function (variant) { return variant.id === this.state.variantId; }.bind(this));
+        if (!exists) {
+          this.state.variantId = route.variants[0].id;
+          this.elements.routeVariant.value = this.state.variantId;
+        }
+      }
+      const active = this.getActiveRoute(this.state);
+      if (active && Number.isFinite(Number(active.durationMinutes))) {
+        this.state.routeMinutes = Number(active.durationMinutes);
+        this.elements.routeMinutes.value = String(active.durationMinutes);
+      }
+      this.update();
+    }
+
     syncDeparture() {
       this.state.departureTime = riskModel.addMinutes(this.state.trainTime, -this.state.departureOffset);
       this.elements.departureLabel.textContent = this.state.departureTime;
@@ -237,6 +256,7 @@
 
   global.RiskTideUI = RiskTideUI;
 })(window);
+
 
 
 

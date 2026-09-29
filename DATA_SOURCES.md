@@ -17,6 +17,8 @@ ull` | 待填写 | 风险计算 |
 
 ## 地图来源
 
+- 高德地图 Web JS API：启用并填写 data/config.js 的 map.key 后，地图与路线优先由高德提供。
+
 - 本地 OpenStreetMap 栅格瓦片：`assets/osm-tiles/{z}/{x}/{y}.png`，z9–z12，共 29 张
 - 瓦片镜像来源：`https://tile.openstreetmap.de/{z}/{x}/{y}.png`
 - 页面归属声明：`地图数据 © OpenStreetMap contributors`
@@ -74,6 +76,7 @@ ull` | 待填写 | 风险计算 |
 - 个人位置上传服务
 
 用户输入只保存在当前浏览器页面状态中，不需要提交到服务器。
+
 
 
 
