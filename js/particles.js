@@ -255,9 +255,9 @@
     }
 
     speedFactor(risk) {
-      if (risk <= 30) return 0.52 + risk / 30 * 0.34;
-      if (risk < 70) return 0.9 + (risk - 30) / 40 * 1.2;
-      return 2.1 + (risk - 70) / 30 * 1.25;
+      if (risk <= 30) return 0.60 + risk / 30 * 0.38;
+      if (risk < 70) return 1.00 + (risk - 30) / 40 * 1.35;
+      return 2.35 + (risk - 70) / 30 * 1.40;
     }
 
     updatePerformance(frameMs, delta) {
@@ -633,6 +633,7 @@
   global.RiskTideParticles = InkParticleSystem;
   global.RiskTideParticleProfile = detectProfile;
 })(window);
+
 
 
 

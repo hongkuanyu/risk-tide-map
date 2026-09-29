@@ -80,8 +80,8 @@
     },
 
     particleBudgets: {
-      desktop: { low: 850, base: 2000, high: 2300, maximum: 2500 },
-      mobile: { low: 360, base: 680, high: 780, maximum: 800 },
+      desktop: { low: 850, base: 2200, high: 2400, maximum: 2500 },
+      mobile: { low: 360, base: 740, high: 790, maximum: 800 },
       layers: { fog: 0.50, flow: 0.35, highlight: 0.15 },
       dpr: { desktop: 2, mobile: 1.5 }
     },
@@ -99,6 +99,7 @@
 
   global.RiskTideConfig = config;
 })(window);
+
 
 
 
