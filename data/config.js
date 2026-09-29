@@ -1,4 +1,4 @@
-﻿/* global window */
+/* global window */
 (function (global) {
   'use strict';
 
@@ -48,8 +48,8 @@
 
     amap: {
       enabled: true,
-      key: '',
-      securityJsCode: '',
+      key: 'f791654cdc91bbe2b567810d34074a70',
+      securityJsCode: 'aba2b2cd55058232eef8d45e0e62f72e',
       version: '2.0',
       city: '无锡',
       mapStyle: 'amap://styles/darkblue',
