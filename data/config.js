@@ -41,7 +41,7 @@
       tileUrl: 'assets/osm-tiles/{z}/{x}/{y}.png',
       attribution: '地图数据 © OpenStreetMap contributors',
       tileMaxZoom: 12,
-      rasterOpacity: 0.58,
+      rasterOpacity: 0.42,
       routePaddingDesktop: { top: 36, right: 34, bottom: 48, left: 390 },
       routePaddingMobile: { top: 28, right: 18, bottom: 28, left: 18 }
     },
@@ -70,13 +70,13 @@
     colors: {
       ink: '#020708',
       paper: '#d9d0b7',
-      safe: [38, 127, 134],
-      safeBright: [112, 196, 194],
-      gold: [185, 120, 39],
-      warmWhite: [246, 236, 205],
-      danger: [201, 75, 63],
-      darkRed: [116, 37, 32],
-      coolWhite: [56, 96, 95]
+      safe: [55, 202, 219],
+      safeBright: [151, 244, 247],
+      gold: [238, 181, 72],
+      warmWhite: [255, 239, 199],
+      danger: [228, 55, 48],
+      darkRed: [102, 18, 19],
+      coolWhite: [221, 249, 255]
     },
 
     particleBudgets: {
@@ -99,7 +99,6 @@
 
   global.RiskTideConfig = config;
 })(window);
-
 
 
 
