@@ -338,6 +338,13 @@
       }
     }
 
+    getScreenPath(coordinates, coordinateSystem) {
+      const points = [];
+      for (let i = 0; i < coordinates.length; i += 1) {
+        points.push(this.project(coordinates[i]));
+      }
+      return points;
+    }
     project(coordinate) {
       if (this.map && this.ready && typeof this.map.project === 'function') {
         const point = this.map.project({ lng: coordinate[0], lat: coordinate[1] });
@@ -442,6 +449,7 @@
   global.RiskTideMap = RiskTideMap;
   global.RiskTideMapUtils = { riskColor: riskColor, mixRgb: mixRgb };
 })(window);
+
 
 
 

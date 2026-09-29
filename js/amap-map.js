@@ -298,6 +298,17 @@
       if (this.routeHalo) this.routeHalo.setOptions({ strokeColor: halo, strokeWeight: this.risk > 70 ? 18 : 12 });
     }
 
+    getScreenPath(coordinates, coordinateSystem) {
+      const points = [];
+      const isGcj = coordinateSystem === 'GCJ02';
+      for (let i = 0; i < coordinates.length; i += 1) {
+        const source = coordinates[i];
+        const current = isGcj ? source : toGcj(source);
+        const screen = this.map.lngLatToContainer(new AMap.LngLat(current[0], current[1]));
+        points.push({ x: screen.x, y: screen.y });
+      }
+      return points;
+    }
     project(coordinate) {
       if (this.map && this.ready) {
         const current = this.projectCoordinatesAreGcj ? coordinate : toGcj(coordinate);
@@ -406,6 +417,7 @@
 
   global.RiskTideAmapMap = RiskTideAmapMap;
 })(window);
+
 
 
 

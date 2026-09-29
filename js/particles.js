@@ -193,12 +193,19 @@
     rebuildProjectedPath() {
       if (!this.map) return;
       const coordinates = this.getRouteCoordinates();
-      const projected = new Array(coordinates.length);
-      for (let i = 0; i < coordinates.length; i += 1) {
-        const point = this.map.project(coordinates[i]);
-        projected[i] = { x: point.x, y: point.y };
+      let projected;
+      if (typeof this.map.getScreenPath === 'function') {
+        projected = this.map.getScreenPath(coordinates, this.route && this.route.coordinateSystem);
+      } else {
+        projected = new Array(coordinates.length);
+        for (let i = 0; i < coordinates.length; i += 1) {
+          const point = this.map.project(coordinates[i]);
+          projected[i] = { x: point.x, y: point.y };
+        }
       }
-      this.projected = projected;
+      this.projected = projected.filter(function (point) {
+        return point && Number.isFinite(point.x) && Number.isFinite(point.y);
+      });
       this.buildUniformSamples();
       this.routeDirty = false;
     }
@@ -647,6 +654,7 @@
   global.RiskTideParticles = InkParticleSystem;
   global.RiskTideParticleProfile = detectProfile;
 })(window);
+
 
 
 
