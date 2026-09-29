@@ -115,8 +115,8 @@
         travel: random,
         lateral: (Math.random() * 2 - 1) * (layer === 0 ? 1.35 : 0.68),
         speed: layer === 0 ? 0.018 + Math.random() * 0.022 : (layer === 1 ? 0.035 + Math.random() * 0.04 : 0.055 + Math.random() * 0.055),
-        size: layer === 0 ? 0.5 + Math.random() * 0.8 : (layer === 1 ? 0.9 + Math.random() * 1.25 : 1.2 + Math.random() * 1.8),
-        alpha: layer === 0 ? 0.08 + Math.random() * 0.16 : (layer === 1 ? 0.34 + Math.random() * 0.42 : 0.5 + Math.random() * 0.5),
+        size: layer === 0 ? 0.26 + Math.random() * 0.46 : (layer === 1 ? 0.48 + Math.random() * 0.72 : 0.72 + Math.random() * 0.9),
+        alpha: layer === 0 ? 0.065 + Math.random() * 0.13 : (layer === 1 ? 0.3 + Math.random() * 0.38 : 0.46 + Math.random() * 0.46),
         phase: Math.random() * Math.PI * 2,
         breathe: 0.75 + Math.random() * 0.65,
         drift: (Math.random() * 2 - 1) * 46,
@@ -525,48 +525,48 @@
 
           if (isFog) {
             ctx.strokeStyle = 'rgba(1,6,7,' + alpha * 0.86 + ')';
-            ctx.lineWidth = Math.max(2.2, size * 6.2);
+            ctx.lineWidth = Math.max(0.75, size * 1.9);
             ctx.stroke();
             ctx.strokeStyle = 'rgba(' + Math.round(r * 0.34) + ',' + Math.round(g * 0.7) + ',' + Math.round(b * 0.78) + ',' + Math.min(0.3, alpha * 0.92) + ')';
-            ctx.lineWidth = Math.max(1.1, size * 3.2);
+            ctx.lineWidth = Math.max(0.35, size * 0.9);
             ctx.stroke();
             ctx.strokeStyle = 'rgba(' + Math.round(r * 0.62) + ',' + Math.round(g * 0.88) + ',' + Math.round(b * 0.9) + ',' + Math.min(0.22, alpha * 0.58) + ')';
-            ctx.lineWidth = Math.max(0.36, size * 0.72);
+            ctx.lineWidth = Math.max(0.2, size * 0.42);
             ctx.stroke();
             ctx.fillStyle = 'rgba(' + Math.round(r * 0.42) + ',' + Math.round(g * 0.68) + ',' + Math.round(b * 0.74) + ',' + Math.min(0.2, alpha * 0.42) + ')';
             ctx.beginPath();
-            ctx.arc(particle.x, particle.y, Math.max(0.45, size * 1.15), 0, Math.PI * 2);
+            ctx.arc(particle.x, particle.y, Math.max(0.22, size * 0.52), 0, Math.PI * 2);
             ctx.fill();
           } else if (layer === 1) {
             ctx.strokeStyle = 'rgba(' + pr + ',' + pg + ',' + pb + ',' + alpha * 0.13 + ')';
-            ctx.lineWidth = Math.max(0.9, size * 2.25);
+            ctx.lineWidth = Math.max(0.55, size * 1.5);
             ctx.stroke();
             ctx.strokeStyle = 'rgba(' + pr + ',' + pg + ',' + pb + ',' + alpha + ')';
-            ctx.lineWidth = Math.max(0.7, size * 0.92);
+            ctx.lineWidth = Math.max(0.32, size * 0.55);
             ctx.stroke();
             ctx.fillStyle = 'rgba(' + Math.min(255, pr + 28) + ',' + Math.min(255, pg + 24) + ',' + Math.min(255, pb + 18) + ',' + alpha * 0.58 + ')';
             ctx.beginPath();
-            ctx.arc(particle.x, particle.y, Math.max(0.45, size * 0.62), 0, Math.PI * 2);
+            ctx.arc(particle.x, particle.y, Math.max(0.22, size * 0.36), 0, Math.PI * 2);
             ctx.fill();
           } else {
             const highlight = r + 58;
             const highlightG = g + 48;
             const highlightB = b + 38;
             if (!this.profile.mobile && !this.profile.low) {
-              ctx.shadowBlur = this.risk > 85 ? 12 : 7;
+              ctx.shadowBlur = this.risk > 85 ? 7 : 4;
               ctx.shadowColor = 'rgba(' + pr + ',' + pg + ',' + pb + ',0.72)';
             }
             ctx.strokeStyle = 'rgba(' + pr + ',' + pg + ',' + pb + ',' + alpha * 0.2 + ')';
-            ctx.lineWidth = Math.max(1.2, size * 2.65);
+            ctx.lineWidth = Math.max(0.65, size * 1.8);
             ctx.stroke();
             ctx.strokeStyle = 'rgba(' + Math.min(255, highlight) + ',' + Math.min(255, highlightG) + ',' + Math.min(255, highlightB) + ',' + alpha + ')';
-            ctx.lineWidth = Math.max(0.8, size * 1.18);
+            ctx.lineWidth = Math.max(0.4, size * 0.68);
             ctx.stroke();
             ctx.shadowBlur = 0;
 
             const cross = size * (this.risk > 85 ? 2.0 : 1.35) * (0.86 + particle.spark * 0.34);
             ctx.strokeStyle = 'rgba(' + Math.min(255, highlight) + ',' + Math.min(255, highlightG) + ',' + Math.min(255, highlightB) + ',' + alpha * 0.82 + ')';
-            ctx.lineWidth = 0.75;
+            ctx.lineWidth = 0.42;
             ctx.beginPath();
             ctx.moveTo(particle.x - cross, particle.y);
             ctx.lineTo(particle.x + cross, particle.y);
@@ -575,7 +575,7 @@
             ctx.stroke();
             ctx.fillStyle = 'rgba(244,255,251,' + alpha * 0.86 + ')';
             ctx.beginPath();
-            ctx.arc(particle.x, particle.y, Math.max(0.55, size * 0.48), 0, Math.PI * 2);
+            ctx.arc(particle.x, particle.y, Math.max(0.28, size * 0.3), 0, Math.PI * 2);
             ctx.fill();
           }
         }
@@ -633,6 +633,8 @@
   global.RiskTideParticles = InkParticleSystem;
   global.RiskTideParticleProfile = detectProfile;
 })(window);
+
+
 
 
 
