@@ -1,5 +1,0 @@
-MOBILE_URL.txt 
-*.log 
-node_modules/ 
-.edge-*/ 
-ui-reference-board.html
