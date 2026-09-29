@@ -205,6 +205,19 @@ button:disabled, input:disabled { opacity: 0.55; cursor: not-allowed; }
 .departure-badge span:first-of-type { font-size: 11.5px; color: var(--ink-faint); }
 .departure-badge span:last-of-type { font-size: 11.5px; color: var(--ink-soft); }
 
+.departure-badge { position: relative; cursor: pointer; }
+.departure-badge:focus-within { border-color: rgba(23, 109, 134, 0.45); }
+.departure-time-picker {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  border: 0;
+  background: transparent;
+}
+.departure-time-picker::-webkit-calendar-picker-indicator { cursor: pointer; width: 100%; height: 100%; }
 .data-pill {
   display: inline-flex;
   align-items: center;
@@ -773,7 +786,20 @@ button:disabled, input:disabled { opacity: 0.55; cursor: not-allowed; }
   .scenario-strip::-webkit-scrollbar { display: none; }
   .scenario-chip { flex: 0 0 auto; }
   .topbar-meta { margin-left: 0; width: 100%; justify-content: space-between; }
-  .data-pill { display: none; }
+  .departure-badge { position: relative; cursor: pointer; }
+.departure-badge:focus-within { border-color: rgba(23, 109, 134, 0.45); }
+.departure-time-picker {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  border: 0;
+  background: transparent;
+}
+.departure-time-picker::-webkit-calendar-picker-indicator { cursor: pointer; width: 100%; height: 100%; }
+.data-pill { display: none; }
   .search-row { grid-template-columns: minmax(0, 1fr) auto; margin: 0 14px; padding: 10px; gap: 8px; }
   .search-field { grid-column: 1; }
   .search-swap { grid-column: 2; grid-row: 1; }
@@ -801,6 +827,7 @@ button:disabled, input:disabled { opacity: 0.55; cursor: not-allowed; }
 @media (prefers-reduced-motion: reduce) {
   * { transition-duration: 0.01ms !important; animation: none !important; }
 }
+
 
 
 

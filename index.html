@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#efe8dc">
   <meta name="description" content="风险潮汐：把出行时间压力变成可见的水墨粒子流。">
   <title>风险潮汐 · 全国时间风险地图</title>
-  <link rel="stylesheet" href="vendor/maplibre-gl.css?v=34">
-  <link rel="stylesheet" href="styles.css?v=34">
+  <link rel="stylesheet" href="vendor/maplibre-gl.css?v=35">
+  <link rel="stylesheet" href="styles.css?v=35">
 </head>
 <body>
   <div class="app-shell" id="app-shell">
@@ -30,11 +30,12 @@
       </div>
 
       <div class="topbar-meta">
-        <span class="departure-badge">
+        <label class="departure-badge" for="departure-time-picker" title="点击可直接修改计划出发时间">
           <strong id="topbar-departure">16:00</strong>
           <span>计划出发</span>
           <span id="topbar-scenario-note">按高铁 18:00 出发</span>
-        </span>
+          <input id="departure-time-picker" class="departure-time-picker" type="time" step="60" value="16:00" aria-label="修改计划出发时间">
+        </label>
         <span class="data-pill"><i></i> 地图 API · 高德 / OSM</span>
       </div>
     </header>
@@ -182,20 +183,23 @@
   </div>
 
   <noscript>此页面需要 JavaScript 才能运行水墨星云粒子与风险计算。</noscript>
-  <script src="vendor/maplibre-gl.js?v=34"></script>
-  <script src="data/config.js?v=34"></script>
-  <script src="data/routes.js?v=34"></script>
-  <script src="js/risk.js?v=34"></script>
-  <script src="js/flow-field.js?v=34"></script>
-  <script src="js/map.js?v=34"></script>
-  <script src="js/amap-map.js?v=34"></script>
-  <script src="js/particles.js?v=34"></script>
-  <script src="js/warm-ui.js?v=34"></script>
-  <script src="js/location-search.js?v=34"></script>
-  <script src="js/ui.js?v=34"></script>
-  <script src="js/app.js?v=34"></script>
+  <script src="vendor/maplibre-gl.js?v=35"></script>
+  <script src="data/config.js?v=35"></script>
+  <script src="data/routes.js?v=35"></script>
+  <script src="js/risk.js?v=35"></script>
+  <script src="js/flow-field.js?v=35"></script>
+  <script src="js/map.js?v=35"></script>
+  <script src="js/amap-map.js?v=35"></script>
+  <script src="js/particles.js?v=35"></script>
+  <script src="js/warm-ui.js?v=35"></script>
+  <script src="js/location-search.js?v=35"></script>
+  <script src="js/ui.js?v=35"></script>
+  <script src="js/app.js?v=35"></script>
 </body>
 </html>
+
+
+
 
 
 

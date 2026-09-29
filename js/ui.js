@@ -40,6 +40,8 @@
         stationMinutes: document.getElementById('station-minutes'),
         departureSlider: document.getElementById('departure-slider'),
         departureLabel: document.getElementById('departure-label'),
+        departureBadge: document.getElementById('topbar-departure'),
+        departurePicker: document.getElementById('departure-time-picker'),
         availableLabel: document.getElementById('available-label'),
         availableMinutes: document.getElementById('available-minutes'),
         buffer: document.getElementById('result-buffer'),
@@ -79,6 +81,23 @@
         self.syncDeparture();
         emit();
       });
+      if (this.elements.departurePicker) {
+        this.elements.departurePicker.addEventListener('focus', function () {
+          self.elements.departurePicker.value = self.state.departureTime;
+        });
+        this.elements.departurePicker.addEventListener('change', function () {
+          const picked = self.elements.departurePicker.value;
+          if (!picked) return;
+          self.state.departureTime = picked;
+          const diffRaw = riskModel.untilTime(picked, self.state.trainTime);
+          const diff = Number.isFinite(diffRaw) ? diffRaw : self.state.departureOffset;
+          const safe = Math.min(720, Math.max(5, Math.round(diff)));
+          self.state.departureOffset = safe;
+          self.elements.departureSlider.value = String(safe);
+          self.syncDeparture();
+          emit();
+        });
+      }
       if (this.elements.availableMinutes) {
         this.elements.availableMinutes.addEventListener('change', function () {
           const raw = Number(self.elements.availableMinutes.value);
@@ -189,6 +208,8 @@
     syncDeparture() {
       this.state.departureTime = riskModel.addMinutes(this.state.trainTime, -this.state.departureOffset);
       this.elements.departureLabel.textContent = this.state.departureTime;
+      if (this.elements.departureBadge) this.elements.departureBadge.textContent = this.state.departureTime;
+      if (this.elements.departurePicker && document.activeElement !== this.elements.departurePicker) this.elements.departurePicker.value = this.state.departureTime;
       if (this.elements.availableLabel) this.elements.availableLabel.textContent = this.state.departureOffset + ' 分钟';
       if (this.elements.availableMinutes && document.activeElement !== this.elements.availableMinutes) {
         this.elements.availableMinutes.value = String(this.state.departureOffset);
@@ -277,6 +298,9 @@
 
   global.RiskTideUI = RiskTideUI;
 })(window);
+
+
+
 
 
 
