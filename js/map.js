@@ -106,11 +106,11 @@
               type: 'raster',
               source: 'osm',
               paint: {
-                'raster-opacity': mapConfig.rasterOpacity,
-                'raster-saturation': -0.88,
-                'raster-contrast': 0.52,
-                'raster-brightness-min': 0.02,
-                'raster-brightness-max': 0.66
+                'raster-opacity': Math.max(0.58, mapConfig.rasterOpacity),
+                'raster-saturation': -0.72,
+                'raster-contrast': 0.62,
+                'raster-brightness-min': 0.01,
+                'raster-brightness-max': 0.62
               }
             }
           ]
@@ -316,7 +316,7 @@
       if (!this.map || !this.ready) return;
       const color = riskColor(risk);
       const opacity = 0.48 + Math.max(0, (risk - 50) / 50) * 0.12;
-      const rasterOpacity = Math.max(0.16, config.map.rasterOpacity - Math.max(0, risk - 58) / 42 * 0.18);
+      const rasterOpacity = Math.max(0.5, config.map.rasterOpacity - Math.max(0, risk - 58) / 42 * 0.18);
 
       if (this.map.getLayer('risk-route-core')) {
         this.map.setPaintProperty('risk-route-core', 'line-color', cssRgb(color, 0.84));
@@ -449,6 +449,8 @@
   global.RiskTideMap = RiskTideMap;
   global.RiskTideMapUtils = { riskColor: riskColor, mixRgb: mixRgb };
 })(window);
+
+
 
 
 

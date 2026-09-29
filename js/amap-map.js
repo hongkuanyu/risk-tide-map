@@ -145,6 +145,7 @@
     }
 
     init(options) {
+      this.options = options;
       this.container = options.container;
       this.canvasStage = options.canvasStage;
       this.onMovement = options.onMovement || function () {};
@@ -208,17 +209,16 @@
     enableFallback(message) {
       this.fallback = true;
       this.ready = false;
-      if (!this.fallbackMap && global.RiskTideMap && this.options) {
-        const self = this;
-        this.fallbackMap = new global.RiskTideMap();
-        this.fallbackMap.init(Object.assign({}, this.options, {
-          onRoutesReady: null,
-          onStatus: function (status) { self.onStatus(status); }
-        }));
-      }
       if (this.canvasStage) this.canvasStage.classList.add('is-fallback');
       if (this.container) this.container.classList.add('is-fallback');
       this.onStatus({ state: 'warning', message: message || '高德地图不可用，已切换 OpenStreetMap。' });
+      if (this.fallbackMap || !global.RiskTideMap || !this.options) return Promise.resolve(false);
+      const self = this;
+      this.fallbackMap = new global.RiskTideMap();
+      return this.fallbackMap.init(Object.assign({}, this.options, {
+        onRoutesReady: null,
+        onStatus: function (status) { self.onStatus(status); }
+      })).then(function () { return false; }).catch(function () { return false; });
     }
 
     markerContent(endpoint, asset) {
@@ -268,6 +268,7 @@
     }
 
     setRoute(route) {
+      if (this.fallbackMap) return this.fallbackMap.setRoute(route);
       if (!this.map) return;
       const hasRoute = route && route.coordinates && route.coordinates.length >= 2;
       this.route = hasRoute ? route.coordinates : [config.endpoints.campus.coordinate, config.endpoints.station.coordinate];
@@ -329,11 +330,12 @@
     }
 
     resize() {
+      if (this.fallbackMap) return this.fallbackMap.resize();
       if (this.map && typeof this.map.resize === 'function') this.map.resize();
     }
 
-    getMoving() { return this.moving; }
-    getReady() { return this.ready && !this.fallback; }
+    getMoving() { return this.fallbackMap ? this.fallbackMap.getMoving() : this.moving; }
+    getReady() { return this.fallbackMap ? this.fallbackMap.getReady() : (this.ready && !this.fallback); }
 
     planRoutes() {
       if (!global.AMap || !global.AMap.Driving || !global.AMap.Transfer) return Promise.resolve(null);
@@ -421,6 +423,8 @@
 
   global.RiskTideAmapMap = RiskTideAmapMap;
 })(window);
+
+
 
 
 
