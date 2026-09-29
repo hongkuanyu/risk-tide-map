@@ -285,7 +285,7 @@
       this.qualityCooldown -= delta;
       if (this.qualityCooldown > 0) return;
       if (this.frameAverage > config.quality.targetFrameMs) {
-        this.quality = Math.max(0.52, this.quality - 0.055);
+        this.quality = Math.max(0.72, this.quality - 0.055);
         this.qualityCooldown = 1.1;
       } else if (this.frameAverage < config.quality.recoveryFrameMs && this.quality < 1) {
         this.quality = Math.min(1, this.quality + 0.018);
@@ -318,10 +318,9 @@
           ? clamp(1 - this.routeChangeProgress / 0.48, 0, 1)
           : clamp((this.routeChangeProgress - 0.48) / 0.52, 0, 1);
       }
-      const desired = Math.min(
-        this.maxParticles,
-        Math.round(this.baseTarget * this.countFactor(this.risk) * this.quality * (moving ? config.quality.movingScale : 1))
-      );
+      const computedDesired = Math.round(this.baseTarget * this.countFactor(this.risk) * this.quality * (moving ? config.quality.movingScale : 1));
+      const minimumVisible = this.profile.mobile ? 420 : 900;
+      const desired = Math.max(minimumVisible, Math.min(this.maxParticles, computedDesired));
       this.activeCount += Math.sign(desired - this.activeCount) * Math.min(18, Math.abs(desired - this.activeCount));
       for (let i = 0; i < this.pool.length; i += 1) {
         this.pool[i].active = i < this.activeCount;
@@ -559,15 +558,15 @@
             ctx.arc(particle.x, particle.y, Math.max(0.12, size * 0.3), 0, Math.PI * 2);
             ctx.fill();
           } else if (layer === 1) {
-            ctx.strokeStyle = 'rgba(' + pr + ',' + pg + ',' + pb + ',' + alpha * 0.13 + ')';
+            ctx.strokeStyle = 'rgba(' + pr + ',' + pg + ',' + pb + ',' + alpha * 0.2 + ')';
             ctx.lineWidth = Math.max(0.32, size * 0.92);
             ctx.stroke();
             ctx.strokeStyle = 'rgba(' + pr + ',' + pg + ',' + pb + ',' + alpha + ')';
-            ctx.lineWidth = Math.max(0.16, size * 0.32);
+            ctx.lineWidth = Math.max(0.28, size * 0.52);
             ctx.stroke();
             ctx.fillStyle = 'rgba(' + Math.min(255, pr + 28) + ',' + Math.min(255, pg + 24) + ',' + Math.min(255, pb + 18) + ',' + alpha * 0.58 + ')';
             ctx.beginPath();
-            ctx.arc(particle.x, particle.y, Math.max(0.11, size * 0.2), 0, Math.PI * 2);
+            ctx.arc(particle.x, particle.y, Math.max(0.16, size * 0.28), 0, Math.PI * 2);
             ctx.fill();
           } else {
             const highlight = r + 58;
@@ -581,7 +580,7 @@
             ctx.lineWidth = Math.max(0.4, size * 1.05);
             ctx.stroke();
             ctx.strokeStyle = 'rgba(' + Math.min(255, highlight) + ',' + Math.min(255, highlightG) + ',' + Math.min(255, highlightB) + ',' + Math.min(0.98, alpha * 1.24) + ')';
-            ctx.lineWidth = Math.max(0.2, size * 0.4);
+            ctx.lineWidth = Math.max(0.34, size * 0.62);
             ctx.stroke();
             ctx.shadowBlur = 0;
 
@@ -659,6 +658,7 @@
   global.RiskTideParticles = InkParticleSystem;
   global.RiskTideParticleProfile = detectProfile;
 })(window);
+
 
 
 
