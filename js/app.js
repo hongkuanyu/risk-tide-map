@@ -128,6 +128,58 @@
       showcaseFrame = global.requestAnimationFrame(showcaseTick);
     }
 
+    function syncSearch() {
+      if (global.RiskTideSearch) global.RiskTideSearch.sync();
+    }
+
+    function initLocationSearch() {
+      var originInput = document.getElementById('origin-input');
+      var destInput = document.getElementById('dest-input');
+      if (!originInput || !destInput || !global.RiskTideLocationSearch) return;
+      var initial = mapController.getEndpoints ? mapController.getEndpoints() : {};
+      originInput.value = (initial.campus && (initial.campus.shortName || initial.campus.name)) || '';
+      destInput.value = (initial.station && (initial.station.shortName || initial.station.name)) || '';
+      global.RiskTideSearch = new global.RiskTideLocationSearch({
+        originInput: originInput,
+        destInput: destInput,
+        swapButton: document.getElementById('search-swap'),
+        locateButton: document.getElementById('search-locate'),
+        hint: document.getElementById('search-hint'),
+        onSelect: function (role, extra, city) {
+          var updates = {};
+          if (role === 'both') {
+            updates.campus = extra.campus;
+            updates.station = extra.station;
+          } else {
+            updates[role] = extra;
+          }
+          if (city) updates.city = city;
+          mapController.setEndpoints(updates);
+          ui.refreshRoutes();
+          lastRouteKey = null;
+          if (mapController.replanRoutes) {
+            mapController.replanRoutes().then(function () {
+              applyState(ui.getState());
+              ui.setStatus('已按新起终点重新规划路线。', 'normal');
+            }).catch(function () {
+              mapController.setRoute(getSelectedRoute(ui.getState()));
+              particles.setRoute(getSelectedRoute(ui.getState()));
+            });
+          } else {
+            mapController.setRoute(getSelectedRoute(ui.getState()));
+            particles.setRoute(getSelectedRoute(ui.getState()));
+          }
+        },
+        onLocate: function () {
+          ui.setStatus('已按当前位置更新起点。', 'normal');
+        }
+      });
+      syncSearch();
+      global.setInterval(syncSearch, 1200);
+    }
+
+    initLocationSearch();
+
     global.addEventListener('risktide:interaction', function () {
       if (showcaseActive) {
         showcaseActive = false;
@@ -187,6 +239,7 @@
     createApp();
   }
 })(window);
+
 
 
 

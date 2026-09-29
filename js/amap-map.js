@@ -142,6 +142,33 @@
       this.onMovement = function () {};
       this.onStatus = function () {};
       this.onRoutesReady = function () {};
+      this.endpoints = {
+        campus: config.endpoints.campus,
+        station: config.endpoints.station
+      };
+      this.city = (config.amap && config.amap.city) || '无锡';
+    }
+
+    setEndpoints(endpoints) {
+      if (!endpoints) return;
+      if (endpoints.campus) this.endpoints.campus = endpoints.campus;
+      if (endpoints.station) this.endpoints.station = endpoints.station;
+      if (endpoints.city) this.city = endpoints.city;
+      if (this.fallbackMap && typeof this.fallbackMap.setEndpoints === 'function') {
+        this.fallbackMap.setEndpoints(endpoints);
+      }
+      if (this.map && this.ready) {
+        this.repositionMarkers();
+        this.setRoute(null);
+      }
+    }
+
+    getEndpoints() { return this.endpoints; }
+
+    replanRoutes() {
+      if (!this.map || !this.ready) return Promise.resolve(null);
+      if (this.fallbackMap) return Promise.resolve(null);
+      return this.planRoutes();
     }
 
     init(options) {
@@ -161,7 +188,7 @@
       global._AMapSecurityConfig = {
         securityJsCode: amapConfig.securityJsCode || ''
       };
-      const pluginNames = ['AMap.Driving', 'AMap.Transfer', 'AMap.ToolBar', 'AMap.Scale'].join(',');
+      const pluginNames = ['AMap.Driving', 'AMap.Transfer', 'AMap.AutoComplete', 'AMap.PlaceSearch', 'AMap.Geocoder', 'AMap.Geolocation', 'AMap.ToolBar', 'AMap.Scale'].join(',');
       const source = 'https://webapi.amap.com/maps?v=' + encodeURIComponent(amapConfig.version || '2.0') +
         '&key=' + encodeURIComponent(amapConfig.key) +
         '&plugin=' + encodeURIComponent(pluginNames);
@@ -228,19 +255,27 @@
     addMarkers() {
       if (!this.map) return;
       this.markers.campus = new AMap.Marker({
-        position: new AMap.LngLat(toGcj(config.endpoints.campus.coordinate)[0], toGcj(config.endpoints.campus.coordinate)[1]),
-        content: this.markerContent(config.endpoints.campus, 'assets/marker-campus.svg'),
+        position: new AMap.LngLat(toGcj(this.endpoints.campus.coordinate)[0], toGcj(this.endpoints.campus.coordinate)[1]),
+        content: this.markerContent(this.endpoints.campus, 'assets/marker-campus.svg'),
         anchor: 'bottom-center',
         zIndex: 120
       });
       this.markers.station = new AMap.Marker({
-        position: new AMap.LngLat(toGcj(config.endpoints.station.coordinate)[0], toGcj(config.endpoints.station.coordinate)[1]),
-        content: this.markerContent(config.endpoints.station, 'assets/marker-station.svg'),
+        position: new AMap.LngLat(toGcj(this.endpoints.station.coordinate)[0], toGcj(this.endpoints.station.coordinate)[1]),
+        content: this.markerContent(this.endpoints.station, 'assets/marker-station.svg'),
         anchor: 'bottom-center',
         zIndex: 121
       });
       this.map.add(this.markers.campus);
       this.map.add(this.markers.station);
+    }
+
+    repositionMarkers() {
+      if (!this.map || !this.markers.campus || !this.markers.station) return;
+      this.markers.campus.setPosition(new AMap.LngLat(toGcj(this.endpoints.campus.coordinate)[0], toGcj(this.endpoints.campus.coordinate)[1]));
+      this.markers.station.setPosition(new AMap.LngLat(toGcj(this.endpoints.station.coordinate)[0], toGcj(this.endpoints.station.coordinate)[1]));
+      this.markers.campus.setContent(this.markerContent(this.endpoints.campus, 'assets/marker-campus.svg'));
+      this.markers.station.setContent(this.markerContent(this.endpoints.station, 'assets/marker-station.svg'));
     }
 
     addRouteLayer() {
@@ -271,7 +306,7 @@
       if (this.fallbackMap) return this.fallbackMap.setRoute(route);
       if (!this.map) return;
       const hasRoute = route && route.coordinates && route.coordinates.length >= 2;
-      this.route = hasRoute ? route.coordinates : [config.endpoints.campus.coordinate, config.endpoints.station.coordinate];
+      this.route = hasRoute ? route.coordinates : [this.endpoints.campus.coordinate, this.endpoints.station.coordinate];
       this.routePreview = !hasRoute;
       this.projectCoordinatesAreGcj = !!(route && route.coordinateSystem === 'GCJ02');
       const gcjPath = this.route.map(this.projectCoordinatesAreGcj ? function (point) { return point.slice(); } : toGcj);
@@ -340,8 +375,8 @@
     planRoutes() {
       if (!global.AMap || !global.AMap.Driving || !global.AMap.Transfer) return Promise.resolve(null);
       const amapConfig = config.amap || {};
-      const origin = toGcj(config.endpoints.campus.coordinate);
-      const destination = toGcj(config.endpoints.station.coordinate);
+      const origin = toGcj(this.endpoints.campus.coordinate);
+      const destination = toGcj(this.endpoints.station.coordinate);
       const drivingPolicies = amapConfig.drivingVariants || [];
       const self = this;
 
@@ -362,8 +397,8 @@
       });
 
       const transferPlanner = new AMap.Transfer({
-        city: amapConfig.city || '无锡',
-        cityd: amapConfig.city || '无锡',
+        city: this.city || '无锡',
+        cityd: this.city || '无锡',
         policy: AMap.TransferPolicy && AMap.TransferPolicy.LEAST_TIME !== undefined ? AMap.TransferPolicy.LEAST_TIME : 0,
         map: null,
         panel: null,
@@ -423,6 +458,9 @@
 
   global.RiskTideAmapMap = RiskTideAmapMap;
 })(window);
+
+
+
 
 
 

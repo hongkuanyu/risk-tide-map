@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#efe8dc">
   <meta name="description" content="风险潮汐：把出行时间压力变成可见的水墨粒子流。">
   <title>风险潮汐 · 全国时间风险地图</title>
-  <link rel="stylesheet" href="vendor/maplibre-gl.css?v=30">
-  <link rel="stylesheet" href="styles.css?v=30">
+  <link rel="stylesheet" href="vendor/maplibre-gl.css?v=31">
+  <link rel="stylesheet" href="styles.css?v=31">
 </head>
 <body>
   <div class="app-shell" id="app-shell">
@@ -39,6 +39,30 @@
       </div>
     </header>
 
+    <section class="search-row" id="search-row" aria-label="起终点搜索">
+      <div class="search-field">
+        <span class="search-dot search-dot-origin" aria-hidden="true"></span>
+        <div class="search-input-wrap">
+          <label for="origin-input">起点</label>
+          <input id="origin-input" type="text" placeholder="输入起点" autocomplete="off" spellcheck="false">
+        </div>
+      </div>
+      <button class="search-swap" id="search-swap" type="button" aria-label="交换起点和终点">
+        <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M7 7h11l-3-3M17 17H6l3 3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="search-field">
+        <span class="search-dot search-dot-dest" aria-hidden="true"></span>
+        <div class="search-input-wrap">
+          <label for="dest-input">终点</label>
+          <input id="dest-input" type="text" placeholder="输入目的地" autocomplete="off" spellcheck="false">
+        </div>
+      </div>
+      <button class="search-locate" id="search-locate" type="button">
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+        使用当前位置
+      </button>
+      <p class="search-hint" id="search-hint" role="status" aria-live="polite"></p>
+    </section>
     <main class="stage">
       <section class="map-shell" id="map-shell" data-risk-level="unknown" aria-label="出行风险路线地图">
         <div id="map" class="map"></div>
@@ -158,17 +182,21 @@
   </div>
 
   <noscript>此页面需要 JavaScript 才能运行水墨星云粒子与风险计算。</noscript>
-  <script src="vendor/maplibre-gl.js?v=30"></script>
-  <script src="data/config.js?v=30"></script>
-  <script src="data/routes.js?v=30"></script>
-  <script src="js/risk.js?v=30"></script>
-  <script src="js/flow-field.js?v=30"></script>
-  <script src="js/map.js?v=30"></script>
-  <script src="js/amap-map.js?v=30"></script>
-  <script src="js/particles.js?v=30"></script>
-  <script src="js/warm-ui.js?v=30"></script>
-  <script src="js/ui.js?v=30"></script>
-  <script src="js/app.js?v=30"></script>
+  <script src="vendor/maplibre-gl.js?v=31"></script>
+  <script src="data/config.js?v=31"></script>
+  <script src="data/routes.js?v=31"></script>
+  <script src="js/risk.js?v=31"></script>
+  <script src="js/flow-field.js?v=31"></script>
+  <script src="js/map.js?v=31"></script>
+  <script src="js/amap-map.js?v=31"></script>
+  <script src="js/particles.js?v=31"></script>
+  <script src="js/warm-ui.js?v=31"></script>
+  <script src="js/location-search.js?v=31"></script>
+  <script src="js/ui.js?v=31"></script>
+  <script src="js/app.js?v=31"></script>
 </body>
 </html>
+
+
+
 
