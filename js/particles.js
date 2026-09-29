@@ -441,9 +441,10 @@
         const x = this.samplesX[index];
         const y = this.samplesY[index];
         const radius = (this.profile.mobile ? 54 : 84) + Math.sin(this.elapsed * 0.17 + i) * 16;
+        const riskTint = 0.045 + this.risk / 100 * 0.075;
         const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
-        gradient.addColorStop(0, 'rgba(' + Math.round(r * 0.32) + ',' + Math.round(g * 0.38) + ',' + Math.round(b * 0.4) + ',0.055)');
-        gradient.addColorStop(0.38, 'rgba(7,28,29,0.035)');
+        gradient.addColorStop(0, 'rgba(' + r + ',' + g + ',' + b + ',' + riskTint + ')');
+        gradient.addColorStop(0.38, 'rgba(' + Math.round(r * 0.65) + ',' + Math.round(g * 0.7) + ',' + Math.round(b * 0.72) + ',' + riskTint * 0.5 + ')');
         gradient.addColorStop(1, 'rgba(2,8,9,0)');
         ctx.fillStyle = gradient;
         ctx.beginPath();
@@ -559,7 +560,7 @@
             ctx.strokeStyle = 'rgba(' + pr + ',' + pg + ',' + pb + ',' + alpha * 0.2 + ')';
             ctx.lineWidth = Math.max(0.4, size * 1.05);
             ctx.stroke();
-            ctx.strokeStyle = 'rgba(' + Math.min(255, highlight) + ',' + Math.min(255, highlightG) + ',' + Math.min(255, highlightB) + ',' + alpha + ')';
+            ctx.strokeStyle = 'rgba(' + Math.min(255, highlight) + ',' + Math.min(255, highlightG) + ',' + Math.min(255, highlightB) + ',' + Math.min(0.98, alpha * 1.24) + ')';
             ctx.lineWidth = Math.max(0.2, size * 0.4);
             ctx.stroke();
             ctx.shadowBlur = 0;
@@ -633,6 +634,7 @@
   global.RiskTideParticles = InkParticleSystem;
   global.RiskTideParticleProfile = detectProfile;
 })(window);
+
 
 
 
