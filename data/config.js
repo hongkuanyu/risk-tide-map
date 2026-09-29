@@ -97,8 +97,8 @@
     },
 
     particleBudgets: {
-      desktop: { low: 850, base: 2200, high: 2400, maximum: 2500 },
-      mobile: { low: 360, base: 740, high: 790, maximum: 800 },
+      desktop: { low: 2000, base: 2800, high: 3100, maximum: 3400 },
+      mobile: { low: 560, base: 880, high: 960, maximum: 1050 },
       layers: { fog: 0.50, flow: 0.35, highlight: 0.15 },
       dpr: { desktop: 2, mobile: 1.5 }
     },
@@ -139,7 +139,7 @@
       colorSmoothing: 0.12,
 
       // ---- Trail -------------------------------------------------------
-      trailLength: { fog: 1.0, flow: 1.25, highlight: 1.45 },
+      trailLength: { fog: 1.05, flow: 1.35, highlight: 1.55 },
       trailSpeedGain: 0.35,
       trailRiskGain: 0.32,
       trailPersonality: [0.85, 1.15],
@@ -180,7 +180,7 @@
       resonanceTriggerDistance: { desktop: 62, mobile: 0 }
     },
     quality: {
-      movingScale: 0.56,
+      movingScale: 0.64,
       lowMemoryGb: 4,
       lowCpuCores: 4,
       targetFrameMs: 19,
@@ -192,6 +192,10 @@
 
   global.RiskTideConfig = config;
 })(window);
+
+
+
+
 
 
 

@@ -201,6 +201,7 @@
         ui.setStatus('已跳过演示，正在按你的操作更新风险颜色。', 'normal');
       }
       if (!ui.getState().mode) ui.selectMode('taxi');
+      else applyState(ui.getState());
     });
     function startShowcase() {
       showcaseActive = true;
@@ -252,6 +253,7 @@
     createApp();
   }
 })(window);
+
 
 
 

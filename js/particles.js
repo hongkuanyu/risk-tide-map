@@ -179,7 +179,7 @@
         lateral: (Math.random() * 2 - 1) * (layer === 0 ? 0.35 : 0.18),
         speed: layer === 0 ? 0.018 + Math.random() * 0.022 : (layer === 1 ? 0.035 + Math.random() * 0.04 : 0.055 + Math.random() * 0.055),
         size: layer === 0 ? 0.16 + Math.random() * 0.28 : (layer === 1 ? 0.28 + Math.random() * 0.45 : 0.42 + Math.random() * 0.55),
-        alpha: layer === 0 ? 0.065 + Math.random() * 0.13 : (layer === 1 ? 0.3 + Math.random() * 0.38 : 0.46 + Math.random() * 0.46),
+        alpha: layer === 0 ? 0.1 + Math.random() * 0.17 : (layer === 1 ? 0.42 + Math.random() * 0.44 : 0.5 + Math.random() * 0.46),
         phase: Math.random() * Math.PI * 2,
         breathe: 0.75 + Math.random() * 0.65,
         drift: (Math.random() * 2 - 1) * 46,
@@ -468,9 +468,9 @@
     }
 
     countFactor(risk) {
-      if (risk <= 30) return 0.5 + risk / 30 * 0.2;
-      if (risk < 70) return 0.8 + (risk - 30) / 40 * 0.3;
-      return 1.1 + (risk - 70) / 30 * 0.4;
+      if (risk <= 30) return 0.66 + risk / 30 * 0.18;
+      if (risk < 70) return 0.9 + (risk - 30) / 40 * 0.28;
+      return 1.2 + (risk - 70) / 30 * 0.3;
     }
 
     speedFactor(risk) {
@@ -485,7 +485,7 @@
       this.qualityCooldown -= delta;
       if (this.qualityCooldown > 0) return;
       if (this.frameAverage > config.quality.targetFrameMs) {
-        this.quality = Math.max(0.72, this.quality - 0.055);
+        this.quality = Math.max(0.78, this.quality - 0.055);
         this.qualityCooldown = 1.1;
       } else if (this.frameAverage < config.quality.recoveryFrameMs && this.quality < 1) {
         this.quality = Math.min(1, this.quality + 0.018);
@@ -524,7 +524,7 @@
           : clamp((this.routeChangeProgress - 0.48) / 0.52, 0, 1);
       }
       const computedDesired = Math.round(this.baseTarget * this.countFactor(this.risk) * this.quality * (moving ? config.quality.movingScale : 1));
-      const minimumVisible = this.profile.mobile ? 420 : 900;
+      const minimumVisible = this.profile.mobile ? 500 : (this.profile.low ? 950 : 1250);
       const desired = Math.max(minimumVisible, Math.min(this.maxParticles, computedDesired));
       this.activeCount += Math.sign(desired - this.activeCount) * Math.min(18, Math.abs(desired - this.activeCount));
 
@@ -532,9 +532,9 @@
       // first and protect the main current and the surface highlights, because
       // the main current is what makes the route readable.
       const nominal = Math.round(this.baseTarget * this.countFactor(this.risk) * (moving ? config.quality.movingScale : 1));
-      const flowQuota = Math.round(nominal * 0.35 * (0.8 + 0.2 * this.quality));
-      const surfQuota = Math.round(nominal * 0.15);
-      const fogQuota = Math.max(0, Math.round(this.activeCount - flowQuota - surfQuota));
+      const flowQuota = Math.min(Math.round(nominal * 0.35), Math.round(this.activeCount * 0.40));
+      const surfQuota = Math.min(Math.round(nominal * 0.15), Math.round(this.activeCount * 0.18));
+      const fogQuota = Math.max(0, this.activeCount - flowQuota - surfQuota);
       let seenFog = 0;
       let seenFlow = 0;
       let seenSurf = 0;
@@ -984,7 +984,7 @@
           // One soft wide pass first: this is the water body that carries the
           // current, and it keeps the flow readable without long trails.
           if (!isFog && this.tideConfig.softPass !== false) {
-            const softAlpha = alpha * 0.2;
+            const softAlpha = alpha * 0.32;
             if (softAlpha > 0.004) {
               ctx.beginPath();
               ctx.moveTo(particle.x - vx * tail, particle.y - vy * tail);
@@ -1016,7 +1016,7 @@
 
           if (isFog) {
             // Ink-cloud head: a soft tinted dot, not a spark.
-            ctx.fillStyle = 'rgba(' + Math.round(r * 0.45) + ',' + Math.round(g * 0.7) + ',' + Math.round(b * 0.76) + ',' + Math.min(0.3, alpha * 0.62) + ')';
+            ctx.fillStyle = 'rgba(' + Math.round(r * 0.45) + ',' + Math.round(g * 0.7) + ',' + Math.round(b * 0.76) + ',' + Math.min(0.36, alpha * 0.72) + ')';
             ctx.beginPath();
             ctx.arc(particle.x, particle.y, Math.max(0.14, size * 0.34), 0, Math.PI * 2);
             ctx.fill();
@@ -1100,6 +1100,15 @@
   global.RiskTideParticles = InkParticleSystem;
   global.RiskTideParticleProfile = detectProfile;
 })(window);
+
+
+
+
+
+
+
+
+
 
 
 
