@@ -158,8 +158,10 @@
           if (role === 'both') {
             updates.campus = extra.campus;
             updates.station = extra.station;
-          } else {
-            updates[role] = extra;
+          } else if (role === 'origin' || role === 'campus') {
+            updates.campus = extra;
+          } else if (role === 'dest' || role === 'station') {
+            updates.station = extra;
           }
           if (city) updates.city = city;
           mapController.setEndpoints(updates);
@@ -247,6 +249,7 @@
     createApp();
   }
 })(window);
+
 
 
 

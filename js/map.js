@@ -299,7 +299,9 @@
     }
 
     setRoute(route) {
-      const geometry = routeGeometry(route, this.endpoints);
+      const geometry = route && route.coordinates && route.coordinates.length >= 2
+        ? routeGeometry(route, this.endpoints)
+        : { coordinates: [this.endpoints.campus.coordinate, this.endpoints.station.coordinate], preview: true };
       this.route = geometry.coordinates;
       this.routePreview = geometry.preview;
       this.updateFallbackOverlay();
@@ -478,6 +480,8 @@
   global.RiskTideMap = RiskTideMap;
   global.RiskTideMapUtils = { riskColor: riskColor, mixRgb: mixRgb };
 })(window);
+
+
 
 
 
