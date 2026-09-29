@@ -54,8 +54,31 @@
     return out;
   }
 
+  function clamp01(value) {
+    return value < 0 ? 0 : (value > 1 ? 1 : value);
+  }
+
+  /* Smooth, C1-continuous ramp used to map a 0..1 risk value onto turbulence.
+     Keeping this here (rather than in the particle system) lets every visual
+     layer share one easing curve. */
+  function smoothstep(edge0, edge1, x) {
+    const span = edge1 - edge0;
+    const t = clamp01(span === 0 ? (x < edge0 ? 0 : 1) : (x - edge0) / span);
+    return t * t * (3 - 2 * t);
+  }
+
+  /* Signed noise in -1..1, reusing the same smoothed value noise that drives
+     the curl field so the tide layer never fights the flow field. */
+  function noiseUnit(x, y, time) {
+    return valueNoise(x, y, time) * 2 - 1;
+  }
   global.RiskTideFlowField = {
     valueNoise: valueNoise,
+    noiseUnit: noiseUnit,
+    smoothstep: smoothstep,
+    clamp01: clamp01,
     sample: sample
   };
 })(window);
+
+

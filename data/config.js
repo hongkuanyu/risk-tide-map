@@ -1,4 +1,4 @@
-/* global window */
+﻿/* global window */
 (function (global) {
   'use strict';
 
@@ -103,6 +103,47 @@
       dpr: { desktop: 2, mobile: 1.5 }
     },
 
+    /* ---- Risk Tide V2 visual layer -------------------------------------
+       All particle-motion, interaction and trail tuning lives here so the
+       look can be re-tuned without touching js/particles.js logic. */
+    tide: {
+      // Natural lateral drift: two low-frequency waves + a small noise term.
+      // Amplitudes are fractions of the local route width.
+      driftAmplitude: { fog: 0.5, flow: 0.22, highlight: 0.11 },
+      driftFreqA: [0.055, 0.115],   // waves per second, per-particle range
+      driftFreqB: [0.019, 0.043],
+      driftNoiseScale: 0.0016,
+      driftNoiseAmp: 0.22,
+      // risk -> turbulence (smoothstep over normalised risk)
+      turbulenceLowEdge: 0.16,
+      turbulenceHighEdge: 0.92,
+      turbulenceDriftGain: 2.1,
+      turbulenceCurlGain: 2.4,
+      turbulenceEddyGain: 1.35,
+      turbulenceSpeedSpread: 0.9,
+      // trails: short, soft, water-like filaments
+      trailLength: { fog: 0.85, flow: 1.05, highlight: 1.25 },
+      trailSpeedGain: 0.45,
+      trailRiskGain: 0.5,
+      // hover wake (visual only, never touches trajectory)
+      wakeRadius: { desktop: 120, mobile: 0 },
+      wakeAlphaGain: 0.6,
+      wakeTrailGain: 0.75,
+      wakeSmoothRate: 6.5,
+      // click ripple
+      rippleLife: 1.25,
+      rippleMax: { desktop: 4, mobile: 2 },
+      rippleRadius: 96,
+      rippleWidth: 1.4,
+      rippleAlpha: 0.3,
+      // route resonance wave packet
+      resonanceCooldown: 1.8,
+      resonanceLife: 2.4,
+      resonanceWidth: 0.115,
+      resonanceGain: 1.5,
+      resonanceBandAlpha: 0.16,
+      resonanceTriggerDistance: { desktop: 62, mobile: 0 }
+    },
     quality: {
       movingScale: 0.56,
       lowMemoryGb: 4,
@@ -116,6 +157,8 @@
 
   global.RiskTideConfig = config;
 })(window);
+
+
 
 
 

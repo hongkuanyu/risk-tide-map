@@ -112,6 +112,9 @@
     });
 
     particles.start();
+    // Risk Tide V2 pointer layer: hover wake, click ripple, route resonance.
+    // All three are visual-only and reuse the existing animation loop.
+    particles.bindPointer(document.getElementById('map-shell'));
     applyState(ui.getState());
 
     function showcaseTick(timestamp) {
@@ -249,6 +252,7 @@
     createApp();
   }
 })(window);
+
 
 
 

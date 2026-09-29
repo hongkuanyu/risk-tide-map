@@ -82,7 +82,37 @@
       this.elapsed = 0;
       this.frameAverage = 16.7;
       this.qualityCooldown = 0;
-      this.campusPulse = 0;
+      this.arrivalPulse = 0;
+      // --- Risk Tide V2 interaction state -------------------------------
+      this.tideConfig = (config.tide) || {};
+      this.riskTurbulence = 0;
+      this.pointerX = 0;
+      this.pointerY = 0;
+      this.pointerActive = false;
+      this.wakeStrength = 0;
+      this.wakeRadius = this.profile.mobile
+        ? ((this.tideConfig.wakeRadius || {}).mobile || 0)
+        : ((this.tideConfig.wakeRadius || {}).desktop || 0);
+      this.wakeRadiusSq = this.wakeRadius * this.wakeRadius;
+      this.resonanceDistance = this.profile.mobile
+        ? ((this.tideConfig.resonanceTriggerDistance || {}).mobile || 0)
+        : ((this.tideConfig.resonanceTriggerDistance || {}).desktop || 0);
+      this.resonanceActive = false;
+      this.resonanceProgress = 0;
+      this.resonanceCooldown = 0;
+      const rippleMax = this.profile.mobile
+        ? ((this.tideConfig.rippleMax || {}).mobile || 2)
+        : ((this.tideConfig.rippleMax || {}).desktop || 4);
+      this.ripples = new Array(rippleMax);
+      for (let r = 0; r < rippleMax; r += 1) {
+        this.ripples[r] = { active: false, x: 0, y: 0, age: 0, seed: r };
+      }
+      this.rippleCursor = 0;
+      this.bandSample = { x: 0, y: 0, tx: 1, ty: 0 };
+      this.pointerBound = false;
+      this.pressing = false;
+      this.pressX = 0;
+      this.pressY = 0;
       this.stormEnergy = 0;
       this.stormCooldown = 1.2;
       this.stormSeed = Math.random() * 1000;
@@ -123,7 +153,19 @@
         wobble: 0.35 + Math.random() * 1.35,
         scatter: Math.random() * 1.6 - 0.8,
         spark: Math.random(),
-        trail: layer === 0 ? 1.75 : (layer === 1 ? 1.42 : 1.85),
+        // --- Risk Tide V2 per-particle seeds ---------------------------
+        // Two incommensurate wave frequencies plus this particle's own phase
+        // keep the lateral drift from ever reading as one mechanical sway.
+        tideFreqA: lerp(0.055, 0.115, Math.random()),
+        tideFreqB: lerp(0.019, 0.043, Math.random()),
+        tidePhaseA: Math.random() * Math.PI * 2,
+        tidePhaseB: Math.random() * Math.PI * 2,
+        eddySeed: Math.random() * Math.PI * 2,
+        speedSpread: 0.82 + Math.random() * 0.36,
+        trailScale: 0.78 + Math.random() * 0.44,
+        wake: 0,
+        resonance: 0,
+        renderTrail: 0.6,
         x: 0,
         y: 0,
         px: 0,
@@ -160,14 +202,105 @@
     }
 
     setRisk(risk) {
-      this.risk = clamp(Number(risk) || 0, 0, 100);
-      this.riskTarget = this.risk;
+      // Only the target is stored here: update() eases toward it, so a slider
+      // jump reads as water gradually growing restless instead of a snap.
+      this.riskTarget = clamp(Number(risk) || 0, 0, 100);
       sampleRiskColor(this.riskTarget, this.targetColor);
-      this.riskColor.r = this.targetColor.r;
-      this.riskColor.g = this.targetColor.g;
-      this.riskColor.b = this.targetColor.b;
     }
 
+    /* ---- Risk Tide V2 pointer layer ----------------------------------
+       Hover, click and route proximity are strictly visual. None of these
+       handlers touch particle position, velocity or the flow field. */
+    bindPointer(element) {
+      if (!element || this.pointerBound) return;
+      this.pointerBound = true;
+      const self = this;
+      const pointFrom = function (event) {
+        const rect = self.canvas.getBoundingClientRect();
+        if (!rect.width || !rect.height) return null;
+        return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+      };
+      element.addEventListener('pointermove', function (event) {
+        const point = pointFrom(event);
+        if (!point) return;
+        self.pointerX = point.x;
+        self.pointerY = point.y;
+        self.pointerActive = self.wakeRadiusSq > 0 && event.pointerType !== 'touch';
+        if (self.resonanceDistance > 0 && self.resonanceCooldown <= 0 && self.isNearRoute(point.x, point.y)) {
+          self.triggerResonance();
+        }
+      }, { passive: true });
+      element.addEventListener('pointerleave', function () {
+        self.pointerActive = false;
+      }, { passive: true });
+      // A click/tap ripples; a map drag must not. So the ring only fires when
+      // the pointer travelled less than a few pixels between down and up.
+      element.addEventListener('pointerdown', function (event) {
+        if (self.isInteractiveControl(event.target)) return;
+        const point = pointFrom(event);
+        if (!point) return;
+        self.pressX = point.x;
+        self.pressY = point.y;
+        self.pressing = true;
+      }, { passive: true });
+      const endPress = function (event) {
+        if (!self.pressing) return;
+        self.pressing = false;
+        if (self.isInteractiveControl(event.target)) return;
+        const point = pointFrom(event);
+        if (!point) return;
+        const dx = point.x - self.pressX;
+        const dy = point.y - self.pressY;
+        if (dx * dx + dy * dy > 36) return;
+        self.spawnRipple(point.x, point.y);
+      };
+      element.addEventListener('pointerup', endPress, { passive: true });
+      element.addEventListener('pointercancel', function () { self.pressing = false; }, { passive: true });
+      this.pointerElement = element;
+    }
+
+    isInteractiveControl(target) {
+      if (!target || !target.closest) return false;
+      return !!target.closest('button, a, input, select, .maplibregl-ctrl, .map-legend, .showcase-overlay');
+    }
+
+    spawnRipple(x, y) {
+      const life = (this.tideConfig.rippleLife || 1.25);
+      const ripple = this.ripples[this.rippleCursor % this.ripples.length];
+      this.rippleCursor += 1;
+      ripple.active = true;
+      ripple.x = x;
+      ripple.y = y;
+      ripple.age = 0;
+      ripple.life = life;
+    }
+
+    triggerResonance() {
+      this.resonanceActive = true;
+      this.resonanceProgress = 0;
+      this.resonanceCooldown = (this.tideConfig.resonanceCooldown || 1.8);
+    }
+
+    /* Squared-distance segment test: cheap enough to run on pointermove. */
+    isNearRoute(x, y) {
+      const points = this.projected;
+      if (!points || points.length < 2) return false;
+      const threshold = this.resonanceDistance;
+      const thresholdSq = threshold * threshold;
+      for (let i = 0; i < points.length - 1; i += 1) {
+        const a = points[i];
+        const b = points[i + 1];
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const lenSq = dx * dx + dy * dy || 1;
+        let t = ((x - a.x) * dx + (y - a.y) * dy) / lenSq;
+        t = t < 0 ? 0 : (t > 1 ? 1 : t);
+        const ox = x - (a.x + dx * t);
+        const oy = y - (a.y + dy * t);
+        if (ox * ox + oy * oy < thresholdSq) return true;
+      }
+      return false;
+    }
     resize() {
       const rect = this.canvas.getBoundingClientRect();
       const cssWidth = Math.max(1, rect.width);
@@ -185,9 +318,11 @@
     getRouteCoordinates() {
       const route = this.route;
       if (route && route.coordinates && route.coordinates.length >= 2) {
-        return route.coordinates.slice().reverse();
+        // Risk Tide V2: the tide flows from the origin toward the destination,
+        // so the deadline at the far end is what the water keeps moving to.
+        return route.coordinates;
       }
-      return [config.endpoints.station.coordinate, config.endpoints.campus.coordinate];
+      return [config.endpoints.campus.coordinate, config.endpoints.station.coordinate];
     }
 
     rebuildProjectedPath() {
@@ -275,9 +410,10 @@
     }
 
     speedFactor(risk) {
-      if (risk <= 30) return 0.60 + risk / 30 * 0.38;
-      if (risk < 70) return 1.00 + (risk - 30) / 40 * 1.35;
-      return 2.35 + (risk - 70) / 30 * 1.40;
+      // Risk Tide V2: risk is expressed mainly through turbulence, so the
+      // global speed ramp stays deliberately gentle (0.86x -> 1.86x).
+      const t = flow.smoothstep(0, 1, clamp(risk / 100, 0, 1));
+      return 0.86 + t * 1.0;
     }
 
     updatePerformance(frameMs, delta) {
@@ -326,25 +462,75 @@
         this.pool[i].active = i < this.activeCount;
       }
 
+      const tide = this.tideConfig;
+      const riskNorm = clamp(this.risk / 100, 0, 1);
+      // Risk is expressed as turbulence, eased so low risk stays calm and the
+      // instability only becomes obvious from the mid range upward.
+      const riskTurbulence = flow.smoothstep(
+        tide.turbulenceLowEdge !== undefined ? tide.turbulenceLowEdge : 0.16,
+        tide.turbulenceHighEdge !== undefined ? tide.turbulenceHighEdge : 0.92,
+        riskNorm
+      );
+      this.riskTurbulence = riskTurbulence;
+
+      // Hover wake is purely visual weight; it never touches trajectory.
+      const wakeTarget = (this.wakeRadiusSq > 0 && this.pointerActive) ? 1 : 0;
+      this.wakeStrength = lerp(this.wakeStrength, wakeTarget, 1 - Math.exp(-dt * (tide.wakeSmoothRate || 6.5)));
+
+      // Route resonance: one short wave packet travelling origin -> destination.
+      if (this.resonanceCooldown > 0) this.resonanceCooldown -= dt;
+      if (this.resonanceActive) {
+        this.resonanceProgress += dt / (tide.resonanceLife || 2.4);
+        if (this.resonanceProgress > 1.12) {
+          this.resonanceActive = false;
+          this.resonanceProgress = 0;
+        }
+      }
+      const resActive = this.resonanceActive;
+      const resProgress = this.resonanceProgress;
+      const resWidth = (tide.resonanceWidth || 0.115) * 3;
+
       const totalLength = this.getPathLength();
       const routeWidth = clamp(totalLength * 0.035, 24, 90) * (this.profile.mobile ? 0.82 : 1);
       const speedFactor = this.speedFactor(this.risk);
-      const curlStrength = (this.profile.mobile ? 8 : 11) * (1 + this.risk / 100 * 1.15) * (moving ? 0.55 : 1);
+      const curlStrength = (this.profile.mobile ? 8 : 11)
+        * (0.7 + riskTurbulence * (tide.turbulenceCurlGain || 2.4))
+        * (moving ? 0.55 : 1);
+      const driftAmps = tide.driftAmplitude || { fog: 0.5, flow: 0.22, highlight: 0.11 };
+      const trailBase = tide.trailLength || { fog: 0.5, flow: 0.66, highlight: 0.78 };
+      const driftNoiseAmp = tide.driftNoiseAmp !== undefined ? tide.driftNoiseAmp : 0.22;
+      const turbulenceDriftGain = tide.turbulenceDriftGain !== undefined ? tide.turbulenceDriftGain : 2.1;
+      const eddyGain = tide.turbulenceEddyGain !== undefined ? tide.turbulenceEddyGain : 1.35;
+      const speedSpreadGain = tide.turbulenceSpeedSpread !== undefined ? tide.turbulenceSpeedSpread : 0.9;
       const pathSample = this.pathSample;
       const curl = this.curlOut;
+      const time = this.elapsed;
 
       for (let i = 0; i < this.activeCount; i += 1) {
         const particle = this.pool[i];
         const layer = particle.layer;
-        const pulse = 0.86 + Math.sin(this.elapsed * particle.breathe + particle.phase) * 0.14;
-        const mechanicalBreak = 0.88 + Math.sin(this.elapsed * 0.73 + particle.phase) * 0.12;
+        const pulse = 0.86 + Math.sin(time * particle.breathe + particle.phase) * 0.14;
+        const mechanicalBreak = 0.88 + Math.sin(time * 0.73 + particle.phase) * 0.12;
         const layerSpeed = layer === 0 ? 0.78 : (layer === 1 ? 1.05 : 1.25);
+        // Per-particle speed differences widen with turbulence, so rising risk
+        // shears the current instead of simply moving everything faster.
+        const spread = 1 + (particle.speedSpread - 1) * (1 + riskTurbulence * speedSpreadGain);
         particle.previousTravel = particle.travel;
-        particle.travel += particle.speed * speedFactor * layerSpeed * mechanicalBreak * dt;
-        particle.lateral += Math.sin(this.elapsed * 0.18 + particle.phase * 1.3) * dt * (layer === 0 ? 0.075 : 0.022);
+        particle.travel += particle.speed * speedFactor * spread * layerSpeed * mechanicalBreak * dt;
+
+        // Natural tide: two incommensurate low-frequency waves + small noise.
+        const waveA = Math.sin(time * particle.tideFreqA + particle.tidePhaseA);
+        const waveB = Math.sin(time * particle.tideFreqB + particle.tidePhaseB);
+        const noise = flow.noiseUnit(particle.travel * 240, particle.phase * 40, (time * 0.35) | 0);
+        const driftAmp = layer === 0 ? driftAmps.fog : (layer === 1 ? driftAmps.flow : driftAmps.highlight);
+        const lateralDrift = waveA * 0.6 + waveB * 0.4 + noise * driftNoiseAmp;
+
+        // Slow integrator keeps neighbouring particles separating over time.
+        particle.lateral += (waveA * 0.5 + waveB * 0.5) * dt * (layer === 0 ? 0.075 : 0.022);
         particle.lateral = clamp(particle.lateral, -1.5, 1.5);
+
         if (particle.travel > 1.04) {
-          this.campusPulse = Math.min(1, this.campusPulse + 0.3);
+          this.arrivalPulse = Math.min(1, this.arrivalPulse + 0.3);
           particle.travel = -Math.random() * 0.12;
           particle.lateral = (Math.random() * 2 - 1) * (layer === 0 ? 1 : 0.68);
           particle.phase = Math.random() * Math.PI * 2;
@@ -352,15 +538,43 @@
 
         this.samplePath(clamp(particle.travel, 0, 1), pathSample);
         const lateralWidth = routeWidth * (layer === 0 ? 1.1 : (layer === 1 ? 0.34 : 0.18));
-        const lateralPixels = particle.lateral * lateralWidth + particle.drift * Math.sin(this.elapsed * 0.24 + particle.phase) * 0.22;
-        const swirl = particle.wobble * Math.sin(this.elapsed * 0.58 + particle.phase * 1.7) * (layer === 0 ? 4.2 : 1.9);
-        let x = pathSample.x - pathSample.ty * (lateralPixels + swirl);
-        let y = pathSample.y + pathSample.tx * (lateralPixels + swirl);
+        // Local eddies: slow per-particle rotation that only appears as the
+        // risk ramps. The route stays the dominant direction at every level.
+        const eddy = Math.sin(time * 0.42 + particle.eddySeed + particle.travel * 6.0) * riskTurbulence * eddyGain;
+        const drift = (particle.lateral + lateralDrift * (1 + riskTurbulence * turbulenceDriftGain)) * lateralWidth
+          + eddy * lateralWidth * 0.55;
+        const wobble = particle.wobble * Math.sin(time * 0.58 + particle.phase * 1.7) * (layer === 0 ? 2.1 : 0.95);
+        let x = pathSample.x - pathSample.ty * (drift + wobble);
+        let y = pathSample.y + pathSample.tx * (drift + wobble);
 
-        flow.sample(x, y, this.elapsed + particle.phase, this.profile.mobile ? 0.0042 : 0.0032, curl);
+        flow.sample(x, y, time + particle.phase, this.profile.mobile ? 0.0042 : 0.0032, curl);
         const curlScale = layer === 0 ? curlStrength * 0.7 : (layer === 1 ? curlStrength * 0.28 : curlStrength * 0.12);
         x += curl.x * curlScale;
         y += curl.y * curlScale;
+
+        // --- hover wake: brightness / clarity only ------------------------
+        let wake = 0;
+        if (this.wakeRadiusSq > 0 && this.wakeStrength > 0.01) {
+          const dxw = x - this.pointerX;
+          const dyw = y - this.pointerY;
+          const d2 = dxw * dxw + dyw * dyw;
+          if (d2 < this.wakeRadiusSq) {
+            const f = 1 - d2 / this.wakeRadiusSq;
+            wake = f * f * this.wakeStrength;
+          }
+        }
+        particle.wake = wake;
+
+        // --- route resonance envelope (Gaussian wave packet) --------------
+        let resonance = 0;
+        if (resActive) {
+          const dRes = particle.travel - resProgress;
+          if (dRes > -resWidth && dRes < resWidth) {
+            const inv = dRes / (resWidth * 0.62);
+            resonance = Math.exp(-inv * inv);
+          }
+        }
+        particle.resonance = resonance;
 
         if (particle.previousTravel < particle.travel && Math.abs(particle.travel - particle.previousTravel) < 0.12) {
           particle.px = particle.x || x;
@@ -375,11 +589,35 @@
         let lifeAlpha = 1;
         if (particle.travel < 0) lifeAlpha = clamp(1 + particle.travel / 0.12, 0, 1);
         if (particle.travel > 0.86) lifeAlpha *= clamp((1.04 - particle.travel) / 0.18, 0, 1);
-        particle.renderAlpha = particle.alpha * lifeAlpha * pulse * visibilityEnvelope;
-        particle.renderSize = particle.size * (0.92 + Math.sin(this.elapsed * particle.breathe * 0.7 + particle.phase) * 0.12);
+        const wakeGain = 1 + wake * (tide.wakeAlphaGain !== undefined ? tide.wakeAlphaGain : 0.6);
+        particle.renderAlpha = particle.alpha * lifeAlpha * pulse * visibilityEnvelope
+          * wakeGain * (1 + resonance * 0.35);
+        particle.renderSize = particle.size
+          * (0.92 + Math.sin(time * particle.breathe * 0.7 + particle.phase) * 0.12)
+          * (1 + wake * 0.22);
+
+        // Short, soft water filaments. Speed adds a little length, turbulence
+        // and wake a little more, but the cap keeps them from becoming lasers.
+        const baseTrail = layer === 0 ? trailBase.fog : (layer === 1 ? trailBase.flow : trailBase.highlight);
+        const speedTerm = 1 + clamp(particle.speed / 0.11, 0, 1) * (tide.trailSpeedGain || 0.45);
+        particle.renderTrail = clamp(
+          baseTrail * particle.trailScale * speedTerm
+            * (1 + riskTurbulence * (tide.trailRiskGain || 0.5))
+            * (1 + wake * (tide.wakeTrailGain || 0.75))
+            * (1 + resonance * 0.45),
+          0.2,
+          2.2
+        );
       }
 
-      this.campusPulse = Math.max(0, this.campusPulse - dt * 0.72);
+      this.arrivalPulse = Math.max(0, this.arrivalPulse - dt * 0.72);
+
+      for (let r = 0; r < this.ripples.length; r += 1) {
+        const ripple = this.ripples[r];
+        if (!ripple.active) continue;
+        ripple.age += dt;
+        if (ripple.age >= ripple.life) ripple.active = false;
+      }
       if (this.risk > 85) {
         this.stormCooldown -= dt;
         if (this.stormCooldown <= 0) {
@@ -405,11 +643,11 @@
       return total;
     }
 
-    drawCampusRing() {
+    drawArrivalRing() {
       if (!this.projected || this.projected.length < 2) return;
       const ctx = this.ctx;
       const end = this.projected[this.projected.length - 1];
-      const pulse = this.campusPulse;
+      const pulse = this.arrivalPulse;
       if (pulse <= 0.02) return;
       const radius = 18 + (1 - pulse) * 72;
       ctx.save();
@@ -473,7 +711,7 @@
       ctx.restore();
     }
 
-    drawStationSource() {
+    drawOriginSource() {
       if (!this.projected || this.projected.length < 2) return;
       const ctx = this.ctx;
       const origin = this.projected[0];
@@ -498,9 +736,89 @@
       ctx.restore();
     }
 
+    /* Soft, restrained water surface feedback - 1..2 rings per click. */
+    drawRipples() {
+      const ctx = this.ctx;
+      const tide = this.tideConfig;
+      const radiusBase = tide.rippleRadius || 96;
+      const widthBase = tide.rippleWidth || 1.4;
+      const alphaBase = tide.rippleAlpha !== undefined ? tide.rippleAlpha : 0.3;
+      const r = this.riskColor.r;
+      const g = this.riskColor.g;
+      const b = this.riskColor.b;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.lineCap = 'round';
+      for (let i = 0; i < this.ripples.length; i += 1) {
+        const ripple = this.ripples[i];
+        if (!ripple.active) continue;
+        const p = clamp(ripple.age / (ripple.life || 1.25), 0, 1);
+        const alpha = (1 - p) * (1 - p) * alphaBase;
+        if (alpha <= 0.004) continue;
+        ctx.strokeStyle = 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
+        ctx.lineWidth = Math.max(0.6, widthBase * (1 - p * 0.55));
+        ctx.beginPath();
+        ctx.arc(ripple.x, ripple.y, 8 + p * radiusBase, 0, Math.PI * 2);
+        ctx.stroke();
+        if (p > 0.18) {
+          const p2 = (p - 0.18) / 0.82;
+          const alpha2 = (1 - p2) * (1 - p2) * alphaBase * 0.5;
+          if (alpha2 > 0.004) {
+            ctx.strokeStyle = 'rgba(' + r + ',' + g + ',' + b + ',' + alpha2 + ')';
+            ctx.lineWidth = Math.max(0.5, widthBase * 0.7 * (1 - p2 * 0.5));
+            ctx.beginPath();
+            ctx.arc(ripple.x, ripple.y, 6 + p2 * radiusBase * 0.7, 0, Math.PI * 2);
+            ctx.stroke();
+          }
+        }
+      }
+      ctx.restore();
+    }
+
+    /* A short wave packet travelling origin -> destination along the route. */
+    drawResonanceBand() {
+      if (!this.resonanceActive || !this.projected || this.projected.length < 2) return;
+      const ctx = this.ctx;
+      const tide = this.tideConfig;
+      const width = tide.resonanceWidth || 0.115;
+      const progress = this.resonanceProgress;
+      if (progress < -width || progress > 1 + width) return;
+      const fade = clamp(Math.min(progress / 0.1, (1.08 - progress) / 0.2), 0, 1);
+      if (fade <= 0.01) return;
+      const alphaBase = (tide.resonanceBandAlpha !== undefined ? tide.resonanceBandAlpha : 0.16) * fade;
+      const steps = this.profile.mobile ? 5 : 8;
+      const r = this.riskColor.r;
+      const g = this.riskColor.g;
+      const b = this.riskColor.b;
+      const sample = this.bandSample;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      for (let pass = 0; pass < 2; pass += 1) {
+        let started = false;
+        ctx.beginPath();
+        for (let i = 0; i <= steps; i += 1) {
+          const t = progress - width + (width * 2) * (i / steps);
+          if (t < 0 || t > 1) { started = false; continue; }
+          this.samplePath(t, sample);
+          if (!started) { ctx.moveTo(sample.x, sample.y); started = true; }
+          else ctx.lineTo(sample.x, sample.y);
+        }
+        if (pass === 0) {
+          ctx.strokeStyle = 'rgba(' + r + ',' + g + ',' + b + ',' + alphaBase * 0.45 + ')';
+          ctx.lineWidth = this.profile.mobile ? 10 : 16;
+        } else {
+          ctx.strokeStyle = 'rgba(' + Math.min(255, r + 42) + ',' + Math.min(255, g + 42) + ',' + Math.min(255, b + 38) + ',' + alphaBase + ')';
+          ctx.lineWidth = 3.2;
+        }
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
     draw() {
       const ctx = this.ctx;
-      const fade = this.profile.mobile ? 0.26 : 0.135;
+      const fade = this.profile.mobile ? 0.24 : 0.138;
       ctx.save();
       ctx.globalCompositeOperation = 'destination-out';
       ctx.fillStyle = 'rgba(0,0,0,' + fade + ')';
@@ -508,8 +826,9 @@
       ctx.restore();
 
       this.drawNebulaClouds();
-      this.drawStationSource();
+      this.drawOriginSource();
       this.drawStormBursts();
+      this.drawResonanceBand();
 
       const moving = this.map && this.map.getMoving && this.map.getMoving();
       const movingAlpha = moving ? 0.7 : 1;
@@ -535,7 +854,7 @@
           const pb = Math.round(lerp(b, 238, tint));
           const vx = particle.x - particle.px;
           const vy = particle.y - particle.py;
-          const tail = particle.trail * (moving ? 0.72 : 1);
+          const tail = (particle.renderTrail || 0.6) * (moving ? 0.82 : 1);
           const tailX = particle.x - vx * tail;
           const tailY = particle.y - vy * tail;
 
@@ -602,7 +921,8 @@
         ctx.restore();
       }
 
-      this.drawCampusRing();
+      this.drawArrivalRing();
+      this.drawRipples();
     }
     frame(timestamp) {
       if (!this.running) return;
@@ -658,6 +978,20 @@
   global.RiskTideParticles = InkParticleSystem;
   global.RiskTideParticleProfile = detectProfile;
 })(window);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
