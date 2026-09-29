@@ -107,41 +107,76 @@
        All particle-motion, interaction and trail tuning lives here so the
        look can be re-tuned without touching js/particles.js logic. */
     tide: {
-      // Natural lateral drift: two low-frequency waves + a small noise term.
-      // Amplitudes are fractions of the local route width.
-      driftAmplitude: { fog: 0.5, flow: 0.22, highlight: 0.11 },
-      driftFreqA: [0.055, 0.115],   // waves per second, per-particle range
+      /* ============ Risk Tide water tuning (single source of truth) =====
+         Everything that decides how the current *feels* lives here.
+         Motion -> channel -> risk -> trail -> layers -> interactions. */
+
+      // ---- Motion ------------------------------------------------------
+      speedVariance: [0.85, 1.15],      // stable per-particle speed bias
+      speedModulationAmp: 0.06,         // very slow individual speed drift
+      speedModulationFreq: [0.04, 0.08],
+      lateralAmplitude: { fog: 0.5, flow: 0.22, highlight: 0.11 },
+      driftFreqA: [0.055, 0.115],       // two incommensurate tide waves
       driftFreqB: [0.019, 0.043],
       driftNoiseScale: 0.0016,
-      driftNoiseAmp: 0.22,
-      // risk -> turbulence (smoothstep over normalised risk)
-      turbulenceLowEdge: 0.16,
+      driftNoiseAmp: 0.2,
+
+      // ---- Channel (the invisible current width) ------------------------
+      channelWidth: { fog: 1.15, flow: 0.5, highlight: 0.3 },
+      channelConcentration: 1.8,        // >1 keeps most particles near centre
+      channelRiskGain: 0.3,             // mild "rising tide" with risk
+      channelConvergeStart: 0.8,        // converge into the destination
+      channelConvergeAmount: 0.5,
+
+      // ---- Risk --------------------------------------------------------
+      turbulenceLowEdge: 0.16,          // calm until the mid range
       turbulenceHighEdge: 0.92,
-      turbulenceDriftGain: 2.1,
-      turbulenceCurlGain: 2.4,
-      turbulenceEddyGain: 1.35,
-      turbulenceSpeedSpread: 0.9,
-      // trails: short, soft, water-like filaments
-      trailLength: { fog: 0.85, flow: 1.05, highlight: 1.25 },
-      trailSpeedGain: 0.45,
-      trailRiskGain: 0.5,
-      // hover wake (visual only, never touches trajectory)
-      wakeRadius: { desktop: 120, mobile: 0 },
-      wakeAlphaGain: 0.6,
-      wakeTrailGain: 0.75,
-      wakeSmoothRate: 6.5,
-      // click ripple
-      rippleLife: 1.25,
+      turbulenceDriftGain: 1.85,        // bounded: heading stays route-led
+      turbulenceCurlGain: 1.8,
+      turbulenceEddyGain: 1.05,
+      turbulenceSpeedSpread: 0.5,
+      riskSmoothing: 0.12,              // exponential base, smaller = slower
+      colorSmoothing: 0.12,
+
+      // ---- Trail -------------------------------------------------------
+      trailLength: { fog: 1.0, flow: 1.25, highlight: 1.45 },
+      trailSpeedGain: 0.35,
+      trailRiskGain: 0.32,
+      trailPersonality: [0.85, 1.15],
+      trailSegments: { fog: 2, flow: 3, highlight: 2 },
+
+      // ---- Layer depth (deliberately subtle) ---------------------------
+      layerOpacity: { fog: 1.0, flow: 1.0, highlight: 1.0 },
+      layerSize: { fog: 0.94, flow: 1.0, highlight: 0.88 },
+      globalOpacity: 1.0,
+
+      // ---- Lifecycle ---------------------------------------------------
+      lifeFadeIn: 0.1,
+      lifeFadeOutStart: 0.86,
+
+      // ---- Hover wake --------------------------------------------------
+      wakeRadius: { desktop: 108, mobile: 0 },
+      wakeAlphaGain: 0.42,
+      wakeTrailGain: 0.5,
+      wakeSizeGain: 0.08,
+      wakeFadeSpeed: 7.0,
+      wakeSpeedGain: 0.22,
+
+      // ---- Click ripple ------------------------------------------------
+      rippleLife: 1.15,
       rippleMax: { desktop: 4, mobile: 2 },
-      rippleRadius: 96,
-      rippleWidth: 1.4,
-      rippleAlpha: 0.3,
-      // route resonance wave packet
-      resonanceCooldown: 1.8,
-      resonanceLife: 2.4,
-      resonanceWidth: 0.115,
-      resonanceGain: 1.5,
-      resonanceBandAlpha: 0.16,
+      rippleRadius: 86,
+      rippleWidth: 1.1,
+      rippleAlpha: 0.19,
+      rippleDelay: 0.11,
+
+      // ---- Route resonance --------------------------------------------
+      resonanceCooldown: 1.9,
+      resonanceLife: 1.3,
+      resonanceWidth: 0.1,              // ahead of the packet
+      resonanceWidthBehind: 0.055,      // faster decay behind it
+      resonanceGain: 1.0,
+      resonanceBandAlpha: 0.12,
       resonanceTriggerDistance: { desktop: 62, mobile: 0 }
     },
     quality: {
@@ -157,6 +192,10 @@
 
   global.RiskTideConfig = config;
 })(window);
+
+
+
+
 
 
 

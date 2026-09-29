@@ -89,6 +89,10 @@
       this.pointerX = 0;
       this.pointerY = 0;
       this.pointerActive = false;
+      this.pointerSpeed = 0;
+      this.lastPointerX = 0;
+      this.lastPointerY = 0;
+      this.lastPointerTime = 0;
       this.wakeStrength = 0;
       this.wakeRadius = this.profile.mobile
         ? ((this.tideConfig.wakeRadius || {}).mobile || 0)
@@ -105,7 +109,7 @@
         : ((this.tideConfig.rippleMax || {}).desktop || 4);
       this.ripples = new Array(rippleMax);
       for (let r = 0; r < rippleMax; r += 1) {
-        this.ripples[r] = { active: false, x: 0, y: 0, age: 0, seed: r };
+        this.ripples[r] = { active: false, x: 0, y: 0, age: 0, seed: r, aspect: 1, tilt: 0 };
       }
       this.rippleCursor = 0;
       this.bandSample = { x: 0, y: 0, tx: 1, ty: 0 };
@@ -124,6 +128,8 @@
       this.samplesY = new Float32Array(this.sampleCount + 1);
       this.samplesTX = new Float32Array(this.sampleCount + 1);
       this.samplesTY = new Float32Array(this.sampleCount + 1);
+      this.smoothTX = new Float32Array(this.sampleCount + 1);
+      this.smoothTY = new Float32Array(this.sampleCount + 1);
       this.projected = [];
       this.routeDirty = true;
       this.curlOut = { x: 0, y: 0 };
@@ -140,10 +146,37 @@
       const modulo = index % 20;
       const layer = modulo < 10 ? 0 : (modulo < 17 ? 1 : 2);
       const random = Math.random();
+      const tide = this.tideConfig || {};
+      const variance = tide.speedVariance || [0.85, 1.15];
+      const trailRange = tide.trailPersonality || [0.85, 1.15];
+      const modRange = tide.speedModulationFreq || [0.04, 0.08];
+      const driftA = tide.driftFreqA || [0.055, 0.115];
+      const driftB = tide.driftFreqB || [0.019, 0.043];
+      // Centre-weighted channel position: most particles hug the middle of the
+      // current, only a few drift along its edges. Never a uniform spread.
+      const concentration = tide.channelConcentration || 1.8;
+      const direction = Math.random() < 0.5 ? -1 : 1;
+      const channelOffset = direction * Math.pow(Math.random(), concentration);
       return {
         layer: layer,
+        /* ---- Flow personality: stable for the particle's whole life ---- */
+        flowSeed: Math.random() * 1000,
+        speedBias: lerp(variance[0], variance[1], Math.random()),
+        channelOffset: channelOffset,
+        lateralBias: (Math.random() * 2 - 1) * 0.18,
+        trailBias: lerp(trailRange[0], trailRange[1], Math.random()),
+        opacityBias: 0.9 + Math.random() * 0.2,
+        sizeBias: 0.88 + Math.random() * 0.24,
+        phaseA: Math.random() * Math.PI * 2,
+        phaseB: Math.random() * Math.PI * 2,
+        modFreq: lerp(modRange[0], modRange[1], Math.random()),
+        modPhase: Math.random() * Math.PI * 2,
+        eddySeed: Math.random() * Math.PI * 2,
+        tideFreqA: lerp(driftA[0], driftA[1], Math.random()),
+        tideFreqB: lerp(driftB[0], driftB[1], Math.random()),
+        /* ---- Base shape ------------------------------------------------ */
         travel: random,
-        lateral: (Math.random() * 2 - 1) * (layer === 0 ? 1.35 : 0.68),
+        lateral: (Math.random() * 2 - 1) * (layer === 0 ? 0.35 : 0.18),
         speed: layer === 0 ? 0.018 + Math.random() * 0.022 : (layer === 1 ? 0.035 + Math.random() * 0.04 : 0.055 + Math.random() * 0.055),
         size: layer === 0 ? 0.16 + Math.random() * 0.28 : (layer === 1 ? 0.28 + Math.random() * 0.45 : 0.42 + Math.random() * 0.55),
         alpha: layer === 0 ? 0.065 + Math.random() * 0.13 : (layer === 1 ? 0.3 + Math.random() * 0.38 : 0.46 + Math.random() * 0.46),
@@ -153,16 +186,6 @@
         wobble: 0.35 + Math.random() * 1.35,
         scatter: Math.random() * 1.6 - 0.8,
         spark: Math.random(),
-        // --- Risk Tide V2 per-particle seeds ---------------------------
-        // Two incommensurate wave frequencies plus this particle's own phase
-        // keep the lateral drift from ever reading as one mechanical sway.
-        tideFreqA: lerp(0.055, 0.115, Math.random()),
-        tideFreqB: lerp(0.019, 0.043, Math.random()),
-        tidePhaseA: Math.random() * Math.PI * 2,
-        tidePhaseB: Math.random() * Math.PI * 2,
-        eddySeed: Math.random() * Math.PI * 2,
-        speedSpread: 0.82 + Math.random() * 0.36,
-        trailScale: 0.78 + Math.random() * 0.44,
         wake: 0,
         resonance: 0,
         renderTrail: 0.6,
@@ -223,6 +246,19 @@
       element.addEventListener('pointermove', function (event) {
         const point = pointFrom(event);
         if (!point) return;
+        // Pointer velocity only tunes how strongly the wake reacts; it never
+        // touches a particle's path.
+        const stamp = (global.performance && global.performance.now) ? global.performance.now() : Date.now();
+        if (self.lastPointerTime) {
+          const dtMove = Math.max(16, stamp - self.lastPointerTime);
+          const distX = point.x - self.lastPointerX;
+          const distY = point.y - self.lastPointerY;
+          const speed = Math.sqrt(distX * distX + distY * distY) / dtMove * 1000;
+          self.pointerSpeed = self.pointerSpeed * 0.65 + speed * 0.35;
+        }
+        self.lastPointerX = point.x;
+        self.lastPointerY = point.y;
+        self.lastPointerTime = stamp;
         self.pointerX = point.x;
         self.pointerY = point.y;
         self.pointerActive = self.wakeRadiusSq > 0 && event.pointerType !== 'touch';
@@ -265,7 +301,7 @@
     }
 
     spawnRipple(x, y) {
-      const life = (this.tideConfig.rippleLife || 1.25);
+      const life = (this.tideConfig.rippleLife || 1.15);
       const ripple = this.ripples[this.rippleCursor % this.ripples.length];
       this.rippleCursor += 1;
       ripple.active = true;
@@ -273,6 +309,10 @@
       ripple.y = y;
       ripple.age = 0;
       ripple.life = life;
+      // A slight, stable irregularity so the ring never reads as a perfect
+      // geometric circle (i.e. never like a UI ripple animation).
+      ripple.aspect = 0.93 + Math.random() * 0.14;
+      ripple.tilt = (Math.random() * 2 - 1) * 0.22;
     }
 
     triggerResonance() {
@@ -388,6 +428,30 @@
         this.samplesTX[i] = dx / mag;
         this.samplesTY[i] = dy / mag;
       }
+
+      // Smooth the tangent field with a small moving average. Without this the
+      // direction snaps at every route node, which reads as a mechanical turn;
+      // smoothed, the current bends through corners like water in a channel.
+      const tx = this.samplesTX;
+      const ty = this.samplesTY;
+      const stx = this.smoothTX;
+      const sty = this.smoothTY;
+      for (let i = 0; i <= this.sampleCount; i += 1) {
+        let ax = 0;
+        let ay = 0;
+        for (let k = -2; k <= 2; k += 1) {
+          const j = clamp(i + k, 0, this.sampleCount);
+          ax += tx[j];
+          ay += ty[j];
+        }
+        const mag = Math.sqrt(ax * ax + ay * ay) || 1;
+        stx[i] = ax / mag;
+        sty[i] = ay / mag;
+      }
+      for (let i = 0; i <= this.sampleCount; i += 1) {
+        tx[i] = stx[i];
+        ty[i] = sty[i];
+      }
     }
 
     samplePath(travel, out) {
@@ -431,10 +495,15 @@
 
     update(now, delta) {
       const dt = Math.min(delta, 0.05);
-      this.risk = lerp(this.risk, this.riskTarget, 1 - Math.pow(0.001, dt));
-      this.riskColor.r = Math.round(lerp(this.riskColor.r, this.targetColor.r, 1 - Math.pow(0.018, dt)));
-      this.riskColor.g = Math.round(lerp(this.riskColor.g, this.targetColor.g, 1 - Math.pow(0.018, dt)));
-      this.riskColor.b = Math.round(lerp(this.riskColor.b, this.targetColor.b, 1 - Math.pow(0.018, dt)));
+      const tide = this.tideConfig;
+      const riskBase = tide.riskSmoothing !== undefined ? tide.riskSmoothing : 0.12;
+      const colorBase = tide.colorSmoothing !== undefined ? tide.colorSmoothing : 0.12;
+      // Exponential smoothing on deltaTime, so 60 / 120 / 144 Hz share one
+      // time constant and risk reads like slowly changing weather.
+      this.risk = lerp(this.risk, this.riskTarget, 1 - Math.pow(riskBase, dt));
+      this.riskColor.r = Math.round(lerp(this.riskColor.r, this.targetColor.r, 1 - Math.pow(colorBase, dt)));
+      this.riskColor.g = Math.round(lerp(this.riskColor.g, this.targetColor.g, 1 - Math.pow(colorBase, dt)));
+      this.riskColor.b = Math.round(lerp(this.riskColor.b, this.targetColor.b, 1 - Math.pow(colorBase, dt)));
 
       const moving = this.map && this.map.getMoving && this.map.getMoving();
       if (this.routeDirty || (moving && this.elapsed % 0.09 < dt)) {
@@ -458,14 +527,27 @@
       const minimumVisible = this.profile.mobile ? 420 : 900;
       const desired = Math.max(minimumVisible, Math.min(this.maxParticles, computedDesired));
       this.activeCount += Math.sign(desired - this.activeCount) * Math.min(18, Math.abs(desired - this.activeCount));
+
+      // Performance budget: when quality drops, thin the background ink cloud
+      // first and protect the main current and the surface highlights, because
+      // the main current is what makes the route readable.
+      const nominal = Math.round(this.baseTarget * this.countFactor(this.risk) * (moving ? config.quality.movingScale : 1));
+      const flowQuota = Math.round(nominal * 0.35 * (0.8 + 0.2 * this.quality));
+      const surfQuota = Math.round(nominal * 0.15);
+      const fogQuota = Math.max(0, Math.round(this.activeCount - flowQuota - surfQuota));
+      let seenFog = 0;
+      let seenFlow = 0;
+      let seenSurf = 0;
       for (let i = 0; i < this.pool.length; i += 1) {
-        this.pool[i].active = i < this.activeCount;
+        const p = this.pool[i];
+        if (p.layer === 0) p.active = seenFog++ < fogQuota;
+        else if (p.layer === 1) p.active = seenFlow++ < flowQuota;
+        else p.active = seenSurf++ < surfQuota;
       }
 
-      const tide = this.tideConfig;
       const riskNorm = clamp(this.risk / 100, 0, 1);
-      // Risk is expressed as turbulence, eased so low risk stays calm and the
-      // instability only becomes obvious from the mid range upward.
+      // Risk becomes turbulence, eased so the low range stays calm and the
+      // instability only grows obvious from the mid range upward.
       const riskTurbulence = flow.smoothstep(
         tide.turbulenceLowEdge !== undefined ? tide.turbulenceLowEdge : 0.16,
         tide.turbulenceHighEdge !== undefined ? tide.turbulenceHighEdge : 0.92,
@@ -473,35 +555,53 @@
       );
       this.riskTurbulence = riskTurbulence;
 
-      // Hover wake is purely visual weight; it never touches trajectory.
-      const wakeTarget = (this.wakeRadiusSq > 0 && this.pointerActive) ? 1 : 0;
-      this.wakeStrength = lerp(this.wakeStrength, wakeTarget, 1 - Math.exp(-dt * (tide.wakeSmoothRate || 6.5)));
+      // Hover wake: purely visual weight. A quicker pointer pass wakes the
+      // water slightly more but lets it settle sooner.
+      const speedRatio = clamp(this.pointerSpeed / 900, 0, 1);
+      const wakeTarget = (this.wakeRadiusSq > 0 && this.pointerActive)
+        ? 1 + speedRatio * (tide.wakeSpeedGain !== undefined ? tide.wakeSpeedGain : 0.22)
+        : 0;
+      const wakeRate = (tide.wakeFadeSpeed || 7) * (this.pointerActive ? 1 : 1 + speedRatio * 0.6);
+      this.wakeStrength = lerp(this.wakeStrength, wakeTarget, 1 - Math.exp(-dt * wakeRate));
+      this.pointerSpeed = lerp(this.pointerSpeed, 0, 1 - Math.exp(-dt * 2.2));
 
-      // Route resonance: one short wave packet travelling origin -> destination.
+      // Route resonance: one short asymmetric wave packet, origin -> destination.
       if (this.resonanceCooldown > 0) this.resonanceCooldown -= dt;
       if (this.resonanceActive) {
-        this.resonanceProgress += dt / (tide.resonanceLife || 2.4);
-        if (this.resonanceProgress > 1.12) {
+        this.resonanceProgress += dt / (tide.resonanceLife || 1.3);
+        if (this.resonanceProgress > 1.08) {
           this.resonanceActive = false;
           this.resonanceProgress = 0;
         }
       }
       const resActive = this.resonanceActive;
       const resProgress = this.resonanceProgress;
-      const resWidth = (tide.resonanceWidth || 0.115) * 3;
+      const resAhead = tide.resonanceWidth || 0.1;
+      const resBehind = tide.resonanceWidthBehind || 0.055;
+      const resGain = tide.resonanceGain !== undefined ? tide.resonanceGain : 1;
 
       const totalLength = this.getPathLength();
-      const routeWidth = clamp(totalLength * 0.035, 24, 90) * (this.profile.mobile ? 0.82 : 1);
+      const baseChannel = clamp(totalLength * 0.035, 24, 90) * (this.profile.mobile ? 0.82 : 1);
       const speedFactor = this.speedFactor(this.risk);
       const curlStrength = (this.profile.mobile ? 8 : 11)
-        * (0.7 + riskTurbulence * (tide.turbulenceCurlGain || 2.4))
+        * (0.7 + riskTurbulence * (tide.turbulenceCurlGain || 1.8))
         * (moving ? 0.55 : 1);
-      const driftAmps = tide.driftAmplitude || { fog: 0.5, flow: 0.22, highlight: 0.11 };
-      const trailBase = tide.trailLength || { fog: 0.5, flow: 0.66, highlight: 0.78 };
-      const driftNoiseAmp = tide.driftNoiseAmp !== undefined ? tide.driftNoiseAmp : 0.22;
-      const turbulenceDriftGain = tide.turbulenceDriftGain !== undefined ? tide.turbulenceDriftGain : 2.1;
-      const eddyGain = tide.turbulenceEddyGain !== undefined ? tide.turbulenceEddyGain : 1.35;
-      const speedSpreadGain = tide.turbulenceSpeedSpread !== undefined ? tide.turbulenceSpeedSpread : 0.9;
+      const channelWidths = tide.channelWidth || { fog: 1.15, flow: 0.5, highlight: 0.3 };
+      const driftAmps = tide.lateralAmplitude || { fog: 0.5, flow: 0.22, highlight: 0.11 };
+      const trailBaseCfg = tide.trailLength || { fog: 0.85, flow: 1.05, highlight: 1.2 };
+      const layerOpacity = tide.layerOpacity || { fog: 0.92, flow: 1, highlight: 0.95 };
+      const layerSizeCfg = tide.layerSize || { fog: 0.94, flow: 1, highlight: 0.88 };
+      const globalOpacity = tide.globalOpacity !== undefined ? tide.globalOpacity : 1;
+      const driftNoiseAmp = tide.driftNoiseAmp !== undefined ? tide.driftNoiseAmp : 0.2;
+      const turbulenceDriftGain = tide.turbulenceDriftGain !== undefined ? tide.turbulenceDriftGain : 1.35;
+      const eddyGain = tide.turbulenceEddyGain !== undefined ? tide.turbulenceEddyGain : 0.85;
+      const speedSpreadGain = tide.turbulenceSpeedSpread !== undefined ? tide.turbulenceSpeedSpread : 0.5;
+      const channelRiskGain = tide.channelRiskGain !== undefined ? tide.channelRiskGain : 0.3;
+      const convergeStart = tide.channelConvergeStart !== undefined ? tide.channelConvergeStart : 0.8;
+      const convergeAmount = tide.channelConvergeAmount !== undefined ? tide.channelConvergeAmount : 0.5;
+      const fadeIn = tide.lifeFadeIn !== undefined ? tide.lifeFadeIn : 0.1;
+      const fadeOutStart = tide.lifeFadeOutStart !== undefined ? tide.lifeFadeOutStart : 0.86;
+      const modulationAmp = tide.speedModulationAmp !== undefined ? tide.speedModulationAmp : 0.06;
       const pathSample = this.pathSample;
       const curl = this.curlOut;
       const time = this.elapsed;
@@ -509,69 +609,83 @@
       for (let i = 0; i < this.activeCount; i += 1) {
         const particle = this.pool[i];
         const layer = particle.layer;
-        const pulse = 0.86 + Math.sin(time * particle.breathe + particle.phase) * 0.14;
-        const mechanicalBreak = 0.88 + Math.sin(time * 0.73 + particle.phase) * 0.12;
+        const layerKey = layer === 0 ? 'fog' : (layer === 1 ? 'flow' : 'highlight');
+
+        /* ---- forward motion: personal bias + very slow modulation ------- */
+        const modulation = 1 + Math.sin(time * particle.modFreq + particle.modPhase) * modulationAmp;
+        const shear = 1 + (particle.speedBias - 1) * (1 + riskTurbulence * speedSpreadGain);
         const layerSpeed = layer === 0 ? 0.78 : (layer === 1 ? 1.05 : 1.25);
-        // Per-particle speed differences widen with turbulence, so rising risk
-        // shears the current instead of simply moving everything faster.
-        const spread = 1 + (particle.speedSpread - 1) * (1 + riskTurbulence * speedSpreadGain);
         particle.previousTravel = particle.travel;
-        particle.travel += particle.speed * speedFactor * spread * layerSpeed * mechanicalBreak * dt;
+        particle.travel += particle.speed * speedFactor * particle.speedBias * modulation * shear * layerSpeed * dt;
 
-        // Natural tide: two incommensurate low-frequency waves + small noise.
-        const waveA = Math.sin(time * particle.tideFreqA + particle.tidePhaseA);
-        const waveB = Math.sin(time * particle.tideFreqB + particle.tidePhaseB);
-        const noise = flow.noiseUnit(particle.travel * 240, particle.phase * 40, (time * 0.35) | 0);
-        const driftAmp = layer === 0 ? driftAmps.fog : (layer === 1 ? driftAmps.flow : driftAmps.highlight);
-        const lateralDrift = waveA * 0.6 + waveB * 0.4 + noise * driftNoiseAmp;
-
-        // Slow integrator keeps neighbouring particles separating over time.
-        particle.lateral += (waveA * 0.5 + waveB * 0.5) * dt * (layer === 0 ? 0.075 : 0.022);
-        particle.lateral = clamp(particle.lateral, -1.5, 1.5);
-
-        if (particle.travel > 1.04) {
+        if (particle.travel > 1.02) {
           this.arrivalPulse = Math.min(1, this.arrivalPulse + 0.3);
-          particle.travel = -Math.random() * 0.12;
-          particle.lateral = (Math.random() * 2 - 1) * (layer === 0 ? 1 : 0.68);
-          particle.phase = Math.random() * Math.PI * 2;
+          particle.travel = -Math.random() * fadeIn;
+          particle.lateral = (Math.random() * 2 - 1) * 0.2;
         }
 
-        this.samplePath(clamp(particle.travel, 0, 1), pathSample);
-        const lateralWidth = routeWidth * (layer === 0 ? 1.1 : (layer === 1 ? 0.34 : 0.18));
-        // Local eddies: slow per-particle rotation that only appears as the
-        // risk ramps. The route stays the dominant direction at every level.
-        const eddy = Math.sin(time * 0.42 + particle.eddySeed + particle.travel * 6.0) * riskTurbulence * eddyGain;
-        const drift = (particle.lateral + lateralDrift * (1 + riskTurbulence * turbulenceDriftGain)) * lateralWidth
-          + eddy * lateralWidth * 0.55;
-        const wobble = particle.wobble * Math.sin(time * 0.58 + particle.phase * 1.7) * (layer === 0 ? 2.1 : 0.95);
-        let x = pathSample.x - pathSample.ty * (drift + wobble);
-        let y = pathSample.y + pathSample.tx * (drift + wobble);
+        const progress = clamp(particle.travel, 0, 1);
+
+        /* ---- natural tide: two incommensurate waves + shared noise ------ */
+        const waveA = Math.sin(time * particle.tideFreqA + particle.phaseA);
+        const waveB = Math.sin(time * particle.tideFreqB + particle.phaseB);
+        const noiseSeed = (particle.flowSeed % 97) * 0.37;
+        const noise = flow.noiseUnit(progress * 200 + noiseSeed, particle.phase * 30, (time * 0.3) | 0);
+        const lateralDrift = waveA * 0.6 + waveB * 0.4 + noise * driftNoiseAmp;
+
+        // Very slow integrator so neighbouring particles never move as one body.
+        particle.lateral += (waveA * 0.4 + waveB * 0.6) * dt * (layer === 0 ? 0.05 : 0.016);
+        particle.lateral = clamp(particle.lateral, -0.35, 0.35);
+
+        /* ---- invisible current channel ---------------------------------- */
+        // The channel widens slightly with risk ("rising tide") and narrows
+        // again near the destination so the water gathers instead of bulging.
+        const convergence = 1 - flow.smoothstep(convergeStart, 1, progress) * convergeAmount;
+        const channelHalf = baseChannel
+          * channelWidths[layerKey]
+          * (1 + riskTurbulence * channelRiskGain)
+          * convergence;
+
+        this.samplePath(progress, pathSample);
+
+        /* ---- short-lived local eddies, per-particle ---------------------- */
+        const eddy = Math.sin(time * 0.34 + particle.eddySeed + progress * 5.5) * riskTurbulence * eddyGain;
+        const wobble = particle.wobble * Math.sin(time * 0.47 + particle.phase * 1.7) * (layer === 0 ? 1.6 : 0.7);
+        const oscillating = (lateralDrift * 0.55 + eddy * 0.5 + wobble * 0.28)
+          * (1 + riskTurbulence * turbulenceDriftGain)
+          * driftAmps[layerKey];
+        const drift = particle.channelOffset + particle.lateralBias + particle.lateral + oscillating;
+        // Hard bound keeps heading route-led even at maximum turbulence.
+        const bounded = clamp(drift, -1.5, 1.5);
+        let x = pathSample.x - pathSample.ty * bounded * channelHalf;
+        let y = pathSample.y + pathSample.tx * bounded * channelHalf;
 
         flow.sample(x, y, time + particle.phase, this.profile.mobile ? 0.0042 : 0.0032, curl);
         const curlScale = layer === 0 ? curlStrength * 0.7 : (layer === 1 ? curlStrength * 0.28 : curlStrength * 0.12);
         x += curl.x * curlScale;
         y += curl.y * curlScale;
 
-        // --- hover wake: brightness / clarity only ------------------------
+        /* ---- hover wake: smooth radial falloff, visual only ------------- */
         let wake = 0;
         if (this.wakeRadiusSq > 0 && this.wakeStrength > 0.01) {
           const dxw = x - this.pointerX;
           const dyw = y - this.pointerY;
           const d2 = dxw * dxw + dyw * dyw;
           if (d2 < this.wakeRadiusSq) {
-            const f = 1 - d2 / this.wakeRadiusSq;
-            wake = f * f * this.wakeStrength;
+            const n = 1 - d2 / this.wakeRadiusSq;
+            wake = (n * n * (3 - 2 * n)) * this.wakeStrength;
           }
         }
         particle.wake = wake;
 
-        // --- route resonance envelope (Gaussian wave packet) --------------
+        /* ---- route resonance: asymmetric wave packet -------------------- */
         let resonance = 0;
         if (resActive) {
-          const dRes = particle.travel - resProgress;
-          if (dRes > -resWidth && dRes < resWidth) {
-            const inv = dRes / (resWidth * 0.62);
-            resonance = Math.exp(-inv * inv);
+          const dRes = progress - resProgress;
+          const width = dRes >= 0 ? resAhead : resBehind;
+          if (dRes > -width && dRes < width) {
+            const inv = dRes / (width * 0.66);
+            resonance = Math.exp(-inv * inv) * resGain;
           }
         }
         particle.resonance = resonance;
@@ -586,27 +700,27 @@
         particle.x = x;
         particle.y = y;
 
-        let lifeAlpha = 1;
-        if (particle.travel < 0) lifeAlpha = clamp(1 + particle.travel / 0.12, 0, 1);
-        if (particle.travel > 0.86) lifeAlpha *= clamp((1.04 - particle.travel) / 0.18, 0, 1);
-        const wakeGain = 1 + wake * (tide.wakeAlphaGain !== undefined ? tide.wakeAlphaGain : 0.6);
-        particle.renderAlpha = particle.alpha * lifeAlpha * pulse * visibilityEnvelope
-          * wakeGain * (1 + resonance * 0.35);
-        particle.renderSize = particle.size
-          * (0.92 + Math.sin(time * particle.breathe * 0.7 + particle.phase) * 0.12)
-          * (1 + wake * 0.22);
+        /* ---- lifecycle: gentle birth and death, never a pop ------------- */
+        const birth = flow.smoothstep(0, fadeIn, progress);
+        const death = 1 - flow.smoothstep(fadeOutStart, 1, progress);
+        const pulse = 0.9 + Math.sin(time * particle.breathe + particle.phase) * 0.1;
+        const wakeGain = 1 + wake * (tide.wakeAlphaGain !== undefined ? tide.wakeAlphaGain : 0.42);
+        particle.renderAlpha = particle.alpha * birth * death * pulse * visibilityEnvelope
+          * particle.opacityBias * globalOpacity * layerOpacity[layerKey]
+          * wakeGain * (1 + resonance * 0.3);
+        particle.renderSize = particle.size * particle.sizeBias * layerSizeCfg[layerKey]
+          * (0.94 + Math.sin(time * particle.breathe * 0.7 + particle.phase) * 0.08)
+          * (1 + wake * (tide.wakeSizeGain !== undefined ? tide.wakeSizeGain : 0.08));
 
-        // Short, soft water filaments. Speed adds a little length, turbulence
-        // and wake a little more, but the cap keeps them from becoming lasers.
-        const baseTrail = layer === 0 ? trailBase.fog : (layer === 1 ? trailBase.flow : trailBase.highlight);
-        const speedTerm = 1 + clamp(particle.speed / 0.11, 0, 1) * (tide.trailSpeedGain || 0.45);
+        /* ---- trail: short, tapered, only lightly state-dependent -------- */
+        const speedTerm = 1 + clamp(particle.speed / 0.11, 0, 1) * (tide.trailSpeedGain || 0.35);
         particle.renderTrail = clamp(
-          baseTrail * particle.trailScale * speedTerm
-            * (1 + riskTurbulence * (tide.trailRiskGain || 0.5))
-            * (1 + wake * (tide.wakeTrailGain || 0.75))
-            * (1 + resonance * 0.45),
+          trailBaseCfg[layerKey] * particle.trailBias * speedTerm
+            * (1 + riskTurbulence * (tide.trailRiskGain || 0.32))
+            * (1 + wake * (tide.wakeTrailGain || 0.5))
+            * (1 + resonance * 0.35),
           0.2,
-          2.2
+          2.0
         );
       }
 
@@ -736,57 +850,59 @@
       ctx.restore();
     }
 
-    /* Soft, restrained water surface feedback - 1..2 rings per click. */
+    /* Soft, restrained water-surface feedback: two slightly irregular rings
+       travelling at different speeds, the second arriving a beat later.
+       Ink on paper rather than an emitting UI ripple. */
     drawRipples() {
       const ctx = this.ctx;
       const tide = this.tideConfig;
-      const radiusBase = tide.rippleRadius || 96;
-      const widthBase = tide.rippleWidth || 1.4;
-      const alphaBase = tide.rippleAlpha !== undefined ? tide.rippleAlpha : 0.3;
+      const radiusBase = tide.rippleRadius || 86;
+      const widthBase = tide.rippleWidth || 1.1;
+      const alphaBase = tide.rippleAlpha !== undefined ? tide.rippleAlpha : 0.19;
+      const delay = tide.rippleDelay !== undefined ? tide.rippleDelay : 0.11;
       const r = this.riskColor.r;
       const g = this.riskColor.g;
       const b = this.riskColor.b;
       ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalCompositeOperation = 'source-over';
       ctx.lineCap = 'round';
       for (let i = 0; i < this.ripples.length; i += 1) {
         const ripple = this.ripples[i];
         if (!ripple.active) continue;
-        const p = clamp(ripple.age / (ripple.life || 1.25), 0, 1);
-        const alpha = (1 - p) * (1 - p) * alphaBase;
-        if (alpha <= 0.004) continue;
-        ctx.strokeStyle = 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
-        ctx.lineWidth = Math.max(0.6, widthBase * (1 - p * 0.55));
-        ctx.beginPath();
-        ctx.arc(ripple.x, ripple.y, 8 + p * radiusBase, 0, Math.PI * 2);
-        ctx.stroke();
-        if (p > 0.18) {
-          const p2 = (p - 0.18) / 0.82;
-          const alpha2 = (1 - p2) * (1 - p2) * alphaBase * 0.5;
-          if (alpha2 > 0.004) {
-            ctx.strokeStyle = 'rgba(' + r + ',' + g + ',' + b + ',' + alpha2 + ')';
-            ctx.lineWidth = Math.max(0.5, widthBase * 0.7 * (1 - p2 * 0.5));
-            ctx.beginPath();
-            ctx.arc(ripple.x, ripple.y, 6 + p2 * radiusBase * 0.7, 0, Math.PI * 2);
-            ctx.stroke();
-          }
+        const life = ripple.life || 1.15;
+        for (let ring = 0; ring < 2; ring += 1) {
+          const age = ripple.age - ring * delay;
+          if (age <= 0) continue;
+          const p = clamp(age / (life * (ring === 0 ? 1 : 0.82)), 0, 1);
+          if (p >= 1) continue;
+          const alpha = (1 - p) * (1 - p) * alphaBase * (ring === 0 ? 1 : 0.62);
+          if (alpha <= 0.004) continue;
+          const radius = 7 + p * radiusBase * (ring === 0 ? 1 : 0.72);
+          ctx.strokeStyle = 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
+          ctx.lineWidth = Math.max(0.5, widthBase * (1 - p * 0.6) * (ring === 0 ? 1 : 0.75));
+          ctx.beginPath();
+          ctx.ellipse(ripple.x, ripple.y, radius, radius * ripple.aspect, ripple.tilt, 0, Math.PI * 2);
+          ctx.stroke();
         }
       }
       ctx.restore();
     }
 
-    /* A short wave packet travelling origin -> destination along the route. */
+    /* A short asymmetric wave packet travelling origin -> destination.
+       Slightly brighter at its leading edge, decaying quickly behind it, and
+       always confined to one short stretch of the route. */
     drawResonanceBand() {
       if (!this.resonanceActive || !this.projected || this.projected.length < 2) return;
       const ctx = this.ctx;
       const tide = this.tideConfig;
-      const width = tide.resonanceWidth || 0.115;
+      const ahead = tide.resonanceWidth || 0.1;
+      const behind = tide.resonanceWidthBehind || 0.055;
       const progress = this.resonanceProgress;
-      if (progress < -width || progress > 1 + width) return;
-      const fade = clamp(Math.min(progress / 0.1, (1.08 - progress) / 0.2), 0, 1);
+      if (progress < -behind || progress > 1 + ahead) return;
+      const fade = clamp(Math.min(progress / 0.08, (1.06 - progress) / 0.16), 0, 1);
       if (fade <= 0.01) return;
-      const alphaBase = (tide.resonanceBandAlpha !== undefined ? tide.resonanceBandAlpha : 0.16) * fade;
-      const steps = this.profile.mobile ? 5 : 8;
+      const alphaBase = (tide.resonanceBandAlpha !== undefined ? tide.resonanceBandAlpha : 0.12) * fade;
+      const steps = this.profile.mobile ? 4 : 7;
       const r = this.riskColor.r;
       const g = this.riskColor.g;
       const b = this.riskColor.b;
@@ -796,21 +912,26 @@
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
       for (let pass = 0; pass < 2; pass += 1) {
-        let started = false;
+        const wide = pass === 0;
+        // The crest sits slightly forward of the wash, so the packet reads as
+        // moving water instead of a scanning highlight.
+        const start = progress - behind * (wide ? 1 : 0.55);
+        const end = progress + ahead * (wide ? 0.85 : 1);
         ctx.beginPath();
+        let started = false;
         for (let i = 0; i <= steps; i += 1) {
-          const t = progress - width + (width * 2) * (i / steps);
+          const t = start + (end - start) * (i / steps);
           if (t < 0 || t > 1) { started = false; continue; }
           this.samplePath(t, sample);
           if (!started) { ctx.moveTo(sample.x, sample.y); started = true; }
           else ctx.lineTo(sample.x, sample.y);
         }
-        if (pass === 0) {
-          ctx.strokeStyle = 'rgba(' + r + ',' + g + ',' + b + ',' + alphaBase * 0.45 + ')';
-          ctx.lineWidth = this.profile.mobile ? 10 : 16;
+        if (wide) {
+          ctx.strokeStyle = 'rgba(' + r + ',' + g + ',' + b + ',' + alphaBase * 0.4 + ')';
+          ctx.lineWidth = this.profile.mobile ? 8 : 13;
         } else {
-          ctx.strokeStyle = 'rgba(' + Math.min(255, r + 42) + ',' + Math.min(255, g + 42) + ',' + Math.min(255, b + 38) + ',' + alphaBase + ')';
-          ctx.lineWidth = 3.2;
+          ctx.strokeStyle = 'rgba(' + Math.min(255, r + 38) + ',' + Math.min(255, g + 38) + ',' + Math.min(255, b + 32) + ',' + alphaBase + ')';
+          ctx.lineWidth = 2.4;
         }
         ctx.stroke();
       }
@@ -832,6 +953,7 @@
 
       const moving = this.map && this.map.getMoving && this.map.getMoving();
       const movingAlpha = moving ? 0.7 : 1;
+      const trailSegments = (this.tideConfig && this.tideConfig.trailSegments) || { fog: 2, flow: 3, highlight: 2 };
       const r = this.riskColor.r;
       const g = this.riskColor.g;
       const b = this.riskColor.b;
@@ -855,67 +977,67 @@
           const vx = particle.x - particle.px;
           const vy = particle.y - particle.py;
           const tail = (particle.renderTrail || 0.6) * (moving ? 0.82 : 1);
-          const tailX = particle.x - vx * tail;
-          const tailY = particle.y - vy * tail;
+          const layerKey = layer === 0 ? 'fog' : (layer === 1 ? 'flow' : 'highlight');
+          const segments = trailSegments[layerKey] || 2;
+          const vMag = Math.sqrt(vx * vx + vy * vy) || 1;
 
-          ctx.beginPath();
-          ctx.moveTo(tailX, tailY);
-          ctx.lineTo(particle.x, particle.y);
+          // One soft wide pass first: this is the water body that carries the
+          // current, and it keeps the flow readable without long trails.
+          if (!isFog && this.tideConfig.softPass !== false) {
+            const softAlpha = alpha * 0.2;
+            if (softAlpha > 0.004) {
+              ctx.beginPath();
+              ctx.moveTo(particle.x - vx * tail, particle.y - vy * tail);
+              ctx.lineTo(particle.x, particle.y);
+              ctx.strokeStyle = 'rgba(' + pr + ',' + pg + ',' + pb + ',' + softAlpha + ')';
+              ctx.lineWidth = Math.max(0.32, size * 0.95);
+              ctx.stroke();
+            }
+          }
+
+          // Tapered trail: crisp near the head, falling away quickly behind.
+          // A cheap approximation of a per-particle gradient that allocates
+          // nothing inside the frame loop.
+          for (let s = segments; s >= 1; s -= 1) {
+            const t0 = (s - 1) / segments;
+            const t1 = s / segments;
+            const weight = 1 - t0;
+            const segAlpha = alpha * weight * weight * (isFog ? 0.95 : 0.85);
+            if (segAlpha <= 0.004) continue;
+            ctx.beginPath();
+            ctx.moveTo(particle.x - vx * tail * t0, particle.y - vy * tail * t0);
+            ctx.lineTo(particle.x - vx * tail * t1, particle.y - vy * tail * t1);
+            ctx.strokeStyle = isFog
+              ? 'rgba(1,6,7,' + segAlpha + ')'
+              : 'rgba(' + pr + ',' + pg + ',' + pb + ',' + segAlpha + ')';
+            ctx.lineWidth = Math.max(0.2, size * (isFog ? 1.1 : 0.78) * (0.4 + weight * 0.6));
+            ctx.stroke();
+          }
 
           if (isFog) {
-            ctx.strokeStyle = 'rgba(1,6,7,' + alpha * 0.86 + ')';
-            ctx.lineWidth = Math.max(0.48, size * 1.35);
-            ctx.stroke();
-            ctx.strokeStyle = 'rgba(' + Math.round(r * 0.34) + ',' + Math.round(g * 0.7) + ',' + Math.round(b * 0.78) + ',' + Math.min(0.3, alpha * 0.92) + ')';
-            ctx.lineWidth = Math.max(0.2, size * 0.56);
-            ctx.stroke();
-            ctx.strokeStyle = 'rgba(' + Math.round(r * 0.62) + ',' + Math.round(g * 0.88) + ',' + Math.round(b * 0.9) + ',' + Math.min(0.22, alpha * 0.58) + ')';
-            ctx.lineWidth = Math.max(0.12, size * 0.26);
-            ctx.stroke();
-            ctx.fillStyle = 'rgba(' + Math.round(r * 0.42) + ',' + Math.round(g * 0.68) + ',' + Math.round(b * 0.74) + ',' + Math.min(0.2, alpha * 0.42) + ')';
+            // Ink-cloud head: a soft tinted dot, not a spark.
+            ctx.fillStyle = 'rgba(' + Math.round(r * 0.45) + ',' + Math.round(g * 0.7) + ',' + Math.round(b * 0.76) + ',' + Math.min(0.3, alpha * 0.62) + ')';
             ctx.beginPath();
-            ctx.arc(particle.x, particle.y, Math.max(0.12, size * 0.3), 0, Math.PI * 2);
+            ctx.arc(particle.x, particle.y, Math.max(0.14, size * 0.34), 0, Math.PI * 2);
             ctx.fill();
           } else if (layer === 1) {
-            ctx.strokeStyle = 'rgba(' + pr + ',' + pg + ',' + pb + ',' + alpha * 0.2 + ')';
-            ctx.lineWidth = Math.max(0.32, size * 0.92);
-            ctx.stroke();
-            ctx.strokeStyle = 'rgba(' + pr + ',' + pg + ',' + pb + ',' + alpha + ')';
-            ctx.lineWidth = Math.max(0.28, size * 0.52);
-            ctx.stroke();
-            ctx.fillStyle = 'rgba(' + Math.min(255, pr + 28) + ',' + Math.min(255, pg + 24) + ',' + Math.min(255, pb + 18) + ',' + alpha * 0.58 + ')';
+            ctx.fillStyle = 'rgba(' + Math.min(255, pr + 22) + ',' + Math.min(255, pg + 20) + ',' + Math.min(255, pb + 14) + ',' + alpha * 0.5 + ')';
             ctx.beginPath();
-            ctx.arc(particle.x, particle.y, Math.max(0.16, size * 0.28), 0, Math.PI * 2);
+            ctx.arc(particle.x, particle.y, Math.max(0.16, size * 0.3), 0, Math.PI * 2);
             ctx.fill();
           } else {
-            const highlight = r + 58;
-            const highlightG = g + 48;
-            const highlightB = b + 38;
+            // Surface layer: a small catch-light stretched along the flow.
+            // Deliberately not a star or sparkle shape.
             if (!this.profile.mobile && !this.profile.low) {
-              ctx.shadowBlur = this.risk > 85 ? 5 : 3;
-              ctx.shadowColor = 'rgba(' + pr + ',' + pg + ',' + pb + ',0.72)';
+              ctx.shadowBlur = this.risk > 85 ? 3 : 2;
+              ctx.shadowColor = 'rgba(' + pr + ',' + pg + ',' + pb + ',0.46)';
             }
-            ctx.strokeStyle = 'rgba(' + pr + ',' + pg + ',' + pb + ',' + alpha * 0.2 + ')';
-            ctx.lineWidth = Math.max(0.4, size * 1.05);
-            ctx.stroke();
-            ctx.strokeStyle = 'rgba(' + Math.min(255, highlight) + ',' + Math.min(255, highlightG) + ',' + Math.min(255, highlightB) + ',' + Math.min(0.98, alpha * 1.24) + ')';
-            ctx.lineWidth = Math.max(0.34, size * 0.62);
-            ctx.stroke();
-            ctx.shadowBlur = 0;
-
-            const cross = size * (this.risk > 85 ? 2.0 : 1.35) * (0.86 + particle.spark * 0.34);
-            ctx.strokeStyle = 'rgba(' + Math.min(255, highlight) + ',' + Math.min(255, highlightG) + ',' + Math.min(255, highlightB) + ',' + alpha * 0.82 + ')';
-            ctx.lineWidth = 0.26;
+            const stretch = size * (0.5 + particle.spark * 0.35);
+            ctx.fillStyle = 'rgba(' + Math.min(255, r + 46) + ',' + Math.min(255, g + 42) + ',' + Math.min(255, b + 34) + ',' + Math.min(0.9, alpha * 1.05) + ')';
             ctx.beginPath();
-            ctx.moveTo(particle.x - cross, particle.y);
-            ctx.lineTo(particle.x + cross, particle.y);
-            ctx.moveTo(particle.x, particle.y - cross);
-            ctx.lineTo(particle.x, particle.y + cross);
-            ctx.stroke();
-            ctx.fillStyle = 'rgba(244,255,251,' + alpha * 0.86 + ')';
-            ctx.beginPath();
-            ctx.arc(particle.x, particle.y, Math.max(0.14, size * 0.18), 0, Math.PI * 2);
+            ctx.arc(particle.x + vx / vMag * stretch, particle.y + vy / vMag * stretch, Math.max(0.16, size * 0.26), 0, Math.PI * 2);
             ctx.fill();
+            ctx.shadowBlur = 0;
           }
         }
         ctx.restore();
@@ -978,6 +1100,25 @@
   global.RiskTideParticles = InkParticleSystem;
   global.RiskTideParticleProfile = detectProfile;
 })(window);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

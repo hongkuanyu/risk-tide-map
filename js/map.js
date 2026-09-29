@@ -205,7 +205,7 @@
           source: 'risk-route',
           layout: { 'line-cap': 'round', 'line-join': 'round' },
           paint: {
-            'line-color': cssRgb(config.colors.safeBright, 0.18),
+            'line-color': cssRgb(config.colors.safeBright, 0.13),
             'line-width': ['interpolate', ['linear'], ['zoom'], 10, 8, 15, 18],
             'line-blur': 3
           }
@@ -236,7 +236,7 @@
           paint: {
             'line-color': cssRgb(config.colors.coolWhite, 0.7),
             'line-width': ['interpolate', ['linear'], ['zoom'], 10, 1, 15, 2.3],
-            'line-opacity': 0.38,
+            'line-opacity': 0.3,
             'line-dasharray': [0.3, 3.2]
           }
         });
@@ -347,7 +347,7 @@
         this.map.setPaintProperty('risk-route-core', 'line-opacity', opacity);
       }
       if (this.map.getLayer('risk-route-halo')) {
-        this.map.setPaintProperty('risk-route-halo', 'line-color', cssRgb(color, risk > 70 ? 0.35 : 0.18));
+        this.map.setPaintProperty('risk-route-halo', 'line-color', cssRgb(color, risk > 70 ? 0.24 : 0.13));
       }
       if (this.map.getLayer('risk-route-flow')) {
         this.map.setPaintProperty('risk-route-flow', 'line-color', cssRgb(color, risk > 70 ? 0.95 : 0.7));
@@ -480,6 +480,7 @@
   global.RiskTideMap = RiskTideMap;
   global.RiskTideMapUtils = { riskColor: riskColor, mixRgb: mixRgb };
 })(window);
+
 
 
 

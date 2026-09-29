@@ -282,7 +282,7 @@
       if (!this.map) return;
       this.routeHalo = new AMap.Polyline({
         path: [],
-        strokeColor: 'rgba(112,196,194,0.35)',
+        strokeColor: 'rgba(112,196,194,0.24)',
         strokeWeight: 12,
         strokeOpacity: 0.45,
         lineJoin: 'round',
@@ -329,7 +329,7 @@
       this.risk = clamp(Number(risk) || 0, 0, 100);
       const color = global.RiskTideMapUtils ? global.RiskTideMapUtils.riskColor(this.risk) : [38, 127, 134];
       const rgba = 'rgba(' + color[0] + ',' + color[1] + ',' + color[2] + ',0.9)';
-      const halo = 'rgba(' + color[0] + ',' + color[1] + ',' + color[2] + ',' + (this.risk > 70 ? 0.34 : 0.2) + ')';
+      const halo = 'rgba(' + color[0] + ',' + color[1] + ',' + color[2] + ',' + (this.risk > 70 ? 0.26 : 0.15) + ')';
       if (this.routePolyline) this.routePolyline.setOptions({ strokeColor: rgba, strokeOpacity: 0.9, strokeWeight: this.risk > 70 ? 5 : 4 });
       if (this.routeHalo) this.routeHalo.setOptions({ strokeColor: halo, strokeWeight: this.risk > 70 ? 18 : 12 });
     }
@@ -464,6 +464,7 @@
 
   global.RiskTideAmapMap = RiskTideAmapMap;
 })(window);
+
 
 
 
