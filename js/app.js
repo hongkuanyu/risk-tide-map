@@ -78,8 +78,14 @@
     mapController.init({
       container: document.getElementById('map'),
       canvasStage: document.getElementById('map-shell'),
-      onMovement: function () {
+      onMovement: function (moving) {
         particles.routeDirty = true;
+        if (!moving) {
+          global.setTimeout(function () {
+            particles.routeDirty = true;
+            if (typeof particles.rebuildProjectedPath === 'function') particles.rebuildProjectedPath();
+          }, 80);
+        }
       },
       onStatus: function (status) {
         if (status.state === 'ready') {
@@ -101,6 +107,8 @@
     }).then(function () {
       mapController.setRoute(getSelectedRoute(ui.getState()));
       particles.setRoute(getSelectedRoute(ui.getState()));
+      particles.routeDirty = true;
+      if (typeof particles.rebuildProjectedPath === 'function') particles.rebuildProjectedPath();
     });
 
     particles.start();
@@ -239,6 +247,8 @@
     createApp();
   }
 })(window);
+
+
 
 
 

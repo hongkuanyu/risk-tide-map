@@ -335,6 +335,9 @@
     }
 
     getScreenPath(coordinates, coordinateSystem) {
+      if (this.fallbackMap && typeof this.fallbackMap.getScreenPath === 'function') {
+        return this.fallbackMap.getScreenPath(coordinates, coordinateSystem);
+      }
       const points = [];
       if (!this.map || !this.ready) {
         for (let f = 0; f < coordinates.length; f += 1) points.push(this.project(coordinates[f]));
@@ -350,6 +353,9 @@
       return points;
     }
     project(coordinate) {
+      if (this.fallbackMap && typeof this.fallbackMap.project === 'function') {
+        return this.fallbackMap.project(coordinate);
+      }
       if (this.map && this.ready) {
         const current = this.projectCoordinatesAreGcj ? coordinate : toGcj(coordinate);
         const screen = this.map.lngLatToContainer(new AMap.LngLat(current[0], current[1]));
@@ -458,6 +464,8 @@
 
   global.RiskTideAmapMap = RiskTideAmapMap;
 })(window);
+
+
 
 
 
