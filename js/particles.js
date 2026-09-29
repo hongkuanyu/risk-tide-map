@@ -134,9 +134,18 @@
     }
 
     setRoute(route) {
-      this.pendingRoute = route || null;
-      this.routeChangeProgress = 0;
+      this.route = route || null;
+      this.pendingRoute = null;
+      this.routeChangeProgress = 1;
       this.routeDirty = true;
+      if (this.ctx) this.ctx.clearRect(0, 0, this.width, this.height);
+      for (let i = 0; i < this.pool.length; i += 1) {
+        const particle = this.pool[i];
+        particle.travel = Math.random();
+        particle.previousTravel = particle.travel;
+        particle.lateral = (Math.random() * 2 - 1) * (particle.layer === 0 ? 0.65 : 0.24);
+        particle.phase = Math.random() * Math.PI * 2;
+      }
     }
 
     applyPendingRoute() {
@@ -151,8 +160,12 @@
     }
 
     setRisk(risk) {
-      this.riskTarget = clamp(Number(risk) || 0, 0, 100);
+      this.risk = clamp(Number(risk) || 0, 0, 100);
+      this.riskTarget = this.risk;
       sampleRiskColor(this.riskTarget, this.targetColor);
+      this.riskColor.r = this.targetColor.r;
+      this.riskColor.g = this.targetColor.g;
+      this.riskColor.b = this.targetColor.b;
     }
 
     resize() {
@@ -308,9 +321,9 @@
       }
 
       const totalLength = this.getPathLength();
-      const routeWidth = clamp(totalLength * 0.052, 26, 150) * (this.profile.mobile ? 0.72 : 1);
+      const routeWidth = clamp(totalLength * 0.035, 24, 90) * (this.profile.mobile ? 0.82 : 1);
       const speedFactor = this.speedFactor(this.risk);
-      const curlStrength = (this.profile.mobile ? 17 : 25) * (1 + this.risk / 100 * 1.65) * (moving ? 0.62 : 1);
+      const curlStrength = (this.profile.mobile ? 8 : 11) * (1 + this.risk / 100 * 1.15) * (moving ? 0.55 : 1);
       const pathSample = this.pathSample;
       const curl = this.curlOut;
 
@@ -332,14 +345,14 @@
         }
 
         this.samplePath(clamp(particle.travel, 0, 1), pathSample);
-        const lateralWidth = routeWidth * (layer === 0 ? 1.65 : (layer === 1 ? 0.74 : 0.36));
+        const lateralWidth = routeWidth * (layer === 0 ? 1.1 : (layer === 1 ? 0.34 : 0.18));
         const lateralPixels = particle.lateral * lateralWidth + particle.drift * Math.sin(this.elapsed * 0.24 + particle.phase) * 0.22;
         const swirl = particle.wobble * Math.sin(this.elapsed * 0.58 + particle.phase * 1.7) * (layer === 0 ? 4.2 : 1.9);
         let x = pathSample.x - pathSample.ty * (lateralPixels + swirl);
         let y = pathSample.y + pathSample.tx * (lateralPixels + swirl);
 
         flow.sample(x, y, this.elapsed + particle.phase, this.profile.mobile ? 0.0042 : 0.0032, curl);
-        const curlScale = layer === 0 ? curlStrength * 1.18 : (layer === 1 ? curlStrength * 0.62 : curlStrength * 0.28);
+        const curlScale = layer === 0 ? curlStrength * 0.7 : (layer === 1 ? curlStrength * 0.28 : curlStrength * 0.12);
         x += curl.x * curlScale;
         y += curl.y * curlScale;
 
@@ -634,6 +647,7 @@
   global.RiskTideParticles = InkParticleSystem;
   global.RiskTideParticleProfile = detectProfile;
 })(window);
+
 
 
 
