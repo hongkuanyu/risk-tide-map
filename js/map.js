@@ -107,10 +107,10 @@
               source: 'osm',
               paint: {
                 'raster-opacity': mapConfig.rasterOpacity,
-                'raster-saturation': -0.88,
-                'raster-contrast': 0.52,
-                'raster-brightness-min': 0.02,
-                'raster-brightness-max': 0.66
+                'raster-saturation': -0.75,
+                'raster-contrast': 0.12,
+                'raster-brightness-min': 0.3,
+                'raster-brightness-max': 0.95
               }
             }
           ]
@@ -330,7 +330,7 @@
       }
       if (this.map.getLayer('osm-raster')) {
         this.map.setPaintProperty('osm-raster', 'raster-opacity', rasterOpacity);
-        this.map.setPaintProperty('osm-raster', 'raster-contrast', 0.5 + risk / 100 * 0.32);
+        this.map.setPaintProperty('osm-raster', 'raster-contrast', 0.1 + risk / 100 * 0.3);
       }
 
       if (this.canvasStage) {
@@ -442,6 +442,7 @@
   global.RiskTideMap = RiskTideMap;
   global.RiskTideMapUtils = { riskColor: riskColor, mixRgb: mixRgb };
 })(window);
+
 
 
 

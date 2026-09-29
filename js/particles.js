@@ -394,7 +394,7 @@
       if (pulse <= 0.02) return;
       const radius = 18 + (1 - pulse) * 72;
       ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalCompositeOperation = 'source-over';
       ctx.strokeStyle = 'rgba(' + this.riskColor.r + ',' + this.riskColor.g + ',' + this.riskColor.b + ',' + (pulse * 0.38) + ')';
       ctx.lineWidth = 1.2 + pulse * 2.4;
       ctx.beginPath();
@@ -408,7 +408,7 @@
       const ctx = this.ctx;
       const energy = this.stormEnergy * this.stormEnergy;
       ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalCompositeOperation = 'source-over';
       const count = this.profile.mobile ? 2 : 4;
       for (let i = 0; i < count; i += 1) {
         const t = ((this.stormSeed + i * 0.23) % 1 + 1) % 1;
@@ -463,7 +463,7 @@
       const g = this.riskColor.g;
       const b = this.riskColor.b;
       ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalCompositeOperation = 'source-over';
       const halo = ctx.createRadialGradient(origin.x, origin.y, 0, origin.x, origin.y, radius);
       halo.addColorStop(0, 'rgba(' + r + ',' + g + ',' + b + ',0.15)');
       halo.addColorStop(0.35, 'rgba(' + r + ',' + g + ',' + b + ',0.06)');
@@ -500,7 +500,7 @@
       for (let layer = 0; layer < 3; layer += 1) {
         const isFog = layer === 0;
         ctx.save();
-        ctx.globalCompositeOperation = isFog ? 'source-over' : 'lighter';
+        ctx.globalCompositeOperation = 'source-over';
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
 
@@ -633,6 +633,7 @@
   global.RiskTideParticles = InkParticleSystem;
   global.RiskTideParticleProfile = detectProfile;
 })(window);
+
 
 
 
