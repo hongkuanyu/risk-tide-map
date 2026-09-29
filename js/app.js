@@ -116,7 +116,6 @@
       ui.setStatus('粒子序章播放中 · ' + secondsLeft + ' 秒后开放操作', 'normal');
       if (progress >= 1) {
         showcaseActive = false;
-        showcaseActive = false;
         ui.setShowcase(false, 1);
         if (!ui.getState().mode) {
           ui.selectMode('taxi');
@@ -129,6 +128,15 @@
       showcaseFrame = global.requestAnimationFrame(showcaseTick);
     }
 
+    global.addEventListener('risktide:interaction', function () {
+      if (showcaseActive) {
+        showcaseActive = false;
+        global.cancelAnimationFrame(showcaseFrame);
+        ui.setShowcase(false, 1);
+        ui.setStatus('已跳过演示，正在按你的操作更新风险颜色。', 'normal');
+      }
+      if (!ui.getState().mode) ui.selectMode('taxi');
+    });
     function startShowcase() {
       showcaseActive = true;
       showcaseStart = global.performance.now();
@@ -179,6 +187,8 @@
     createApp();
   }
 })(window);
+
+
 
 
 

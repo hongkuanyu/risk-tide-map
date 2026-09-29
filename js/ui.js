@@ -60,7 +60,11 @@
 
     bindEvents() {
       const self = this;
-      function emit() { self.update(); self.onChange(self.getState()); }
+      function emit() {
+        global.dispatchEvent(new CustomEvent('risktide:interaction'));
+        self.update();
+        self.onChange(self.getState());
+      }
 
       this.elements.taxiButton.addEventListener('click', function () { self.selectMode('taxi'); });
       this.elements.busButton.addEventListener('click', function () { self.selectMode('bus'); });
@@ -90,6 +94,7 @@
     selectMode(mode) {
       if (!this.routeMap[mode]) return;
       this.state.mode = mode;
+      global.dispatchEvent(new CustomEvent('risktide:interaction'));
       const route = this.routeMap[mode];
       this.state.variantId = route.variants && route.variants.length ? route.variants[0].id : null;
       this.populateVariants(route);
@@ -190,7 +195,6 @@
       if (typeof progress === 'number') {
         this.elements.showcaseProgress.style.transform = 'scaleX(' + Math.max(0, Math.min(1, progress)) + ')';
       }
-      this.elements.panel.classList.toggle('is-locked', active);
     }
 
     updateMetrics(metrics) {
@@ -256,6 +260,8 @@
 
   global.RiskTideUI = RiskTideUI;
 })(window);
+
+
 
 
 
