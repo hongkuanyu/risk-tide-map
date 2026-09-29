@@ -614,9 +614,14 @@
       }
       const deltaMs = this.lastTime ? timestamp - this.lastTime : 16.7;
       this.lastTime = timestamp;
-      this.updatePerformance(deltaMs, Math.min(deltaMs / 1000, 0.05));
-      this.update(timestamp / 1000, deltaMs / 1000);
-      this.draw();
+      try {
+        this.updatePerformance(deltaMs, Math.min(deltaMs / 1000, 0.05));
+        this.update(timestamp / 1000, deltaMs / 1000);
+        this.draw();
+      } catch (error) {
+        this.routeDirty = true;
+        if (global.console && console.warn) console.warn('粒子帧已跳过：' + (error && error.message ? error.message : error));
+      }
       global.requestAnimationFrame(this.boundFrame);
     }
 
@@ -654,6 +659,7 @@
   global.RiskTideParticles = InkParticleSystem;
   global.RiskTideParticleProfile = detectProfile;
 })(window);
+
 
 
 

@@ -300,6 +300,10 @@
 
     getScreenPath(coordinates, coordinateSystem) {
       const points = [];
+      if (!this.map || !this.ready) {
+        for (let f = 0; f < coordinates.length; f += 1) points.push(this.project(coordinates[f]));
+        return points;
+      }
       const isGcj = coordinateSystem === 'GCJ02';
       for (let i = 0; i < coordinates.length; i += 1) {
         const source = coordinates[i];
@@ -417,6 +421,7 @@
 
   global.RiskTideAmapMap = RiskTideAmapMap;
 })(window);
+
 
 
 
