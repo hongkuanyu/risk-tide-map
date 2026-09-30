@@ -122,7 +122,11 @@
       this.injectionScale = 1;   // set to 0 to run the injection=0 gate test
       this.colour = [0, 124, 108];
       this.width = 1; this.height = 1;
-      const opts = { alpha: true, premultipliedAlpha: false, antialias: false, depth: false, stencil: false, preserveDrawingBuffer: false };
+      /* preserveDrawingBuffer is only needed when a still frame has to survive
+         compositing (debug screenshots). Production keeps it false - it costs
+         performance. */
+      const keepBuffer = /(?:^|[?&])(debug=1|snapshot=1)/.test(global.location ? global.location.search : '');
+      const opts = { alpha: true, premultipliedAlpha: false, antialias: false, depth: false, stencil: false, preserveDrawingBuffer: keepBuffer };
       this.gl = canvas && canvas.getContext ? canvas.getContext('webgl2', opts) : null;
       if (!this.gl) { this.failed = true; return; }
       const gl = this.gl;
