@@ -765,7 +765,7 @@
       if (pulse <= 0.02) return;
       const radius = 18 + (1 - pulse) * 72;
       ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalCompositeOperation = 'source-over';
       ctx.strokeStyle = 'rgba(' + this.riskColor.r + ',' + this.riskColor.g + ',' + this.riskColor.b + ',' + (pulse * 0.38) + ')';
       ctx.lineWidth = 1.2 + pulse * 2.4;
       ctx.beginPath();
@@ -779,7 +779,7 @@
       const ctx = this.ctx;
       const energy = this.stormEnergy * this.stormEnergy;
       ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalCompositeOperation = 'source-over';
       const count = this.profile.mobile ? 2 : 4;
       for (let i = 0; i < count; i += 1) {
         const t = ((this.stormSeed + i * 0.23) % 1 + 1) % 1;
@@ -835,7 +835,7 @@
       const g = this.riskColor.g;
       const b = this.riskColor.b;
       ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalCompositeOperation = 'source-over';
       const halo = ctx.createRadialGradient(origin.x, origin.y, 0, origin.x, origin.y, radius);
       halo.addColorStop(0, 'rgba(' + r + ',' + g + ',' + b + ',0.15)');
       halo.addColorStop(0.35, 'rgba(' + r + ',' + g + ',' + b + ',0.06)');
@@ -908,7 +908,7 @@
       const b = this.riskColor.b;
       const sample = this.bandSample;
       ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalCompositeOperation = 'source-over';
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
       for (let pass = 0; pass < 2; pass += 1) {
@@ -937,6 +937,29 @@
       }
       ctx.restore();
     }
+    /* A single brush stroke: a quadrilateral that is widest at the head and
+       tapers to a point along the direction of travel. Filled, so there is no
+       round line cap - which is what made the tide read as dots on a string. */
+    brushWedge(x, y, vx, vy, vMag, headWidth, tailLength, colour) {
+      const ctx = this.ctx;
+      const tx = vx / vMag;
+      const ty = vy / vMag;
+      const nx = -ty;
+      const ny = tx;
+      const hw = Math.max(0.2, headWidth * 0.5);
+      const tw = hw * 0.10;
+      const ex = x - tx * tailLength;
+      const ey = y - ty * tailLength;
+      ctx.fillStyle = colour;
+      ctx.beginPath();
+      ctx.moveTo(x + nx * hw, y + ny * hw);
+      ctx.lineTo(ex + nx * tw, ey + ny * tw);
+      ctx.lineTo(ex - nx * tw, ey - ny * tw);
+      ctx.lineTo(x - nx * hw, y - ny * hw);
+      ctx.closePath();
+      ctx.fill();
+    }
+
     draw() {
       const ctx = this.ctx;
       const fade = this.profile.mobile ? 0.19 : 0.105;
@@ -961,7 +984,11 @@
       for (let layer = 0; layer < 3; layer += 1) {
         const isFog = layer === 0;
         ctx.save();
-        ctx.globalCompositeOperation = isFog ? 'source-over' : 'lighter';
+        /* Ink, not light: additive blending ('lighter') is the single biggest
+           "digital particle" tell. Overlapping strokes must build up density
+           like layered pigment on paper, so everything composites normally and
+           the canvas element itself is multiplied onto the map. */
+        ctx.globalCompositeOperation = 'source-over';
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
 
@@ -970,10 +997,12 @@
           if (particle.layer !== layer || particle.renderAlpha <= 0.005) continue;
           const alpha = particle.renderAlpha * movingAlpha;
           const size = (particle.renderSize || particle.size) * (moving ? 0.82 : 1);
-          const tint = particle.spark * 0.28;
-          const pr = Math.round(lerp(r, 247, tint));
-          const pg = Math.round(lerp(g, 250, tint));
-          const pb = Math.round(lerp(b, 238, tint));
+          /* Highlights are a lighter mix of the same ink, never white - white
+             specks read as sparks rather than wet brush. */
+          const tint = particle.spark * 0.13;
+          const pr = Math.round(lerp(r, Math.min(255, r + 72), tint));
+          const pg = Math.round(lerp(g, Math.min(255, g + 66), tint));
+          const pb = Math.round(lerp(b, Math.min(255, b + 54), tint));
           const vx = particle.x - particle.px;
           const vy = particle.y - particle.py;
           const tail = (particle.renderTrail || 0.6) * (moving ? 0.82 : 1);
@@ -1014,30 +1043,31 @@
             ctx.stroke();
           }
 
+          /* Every head is now a brush wedge: wide where the bristles touch,
+             tapering to nothing behind, filled instead of round-capped. */
           if (isFog) {
-            // Ink-cloud head: a soft tinted dot, not a spark.
-            ctx.fillStyle = 'rgba(' + Math.round(r * 0.45) + ',' + Math.round(g * 0.7) + ',' + Math.round(b * 0.76) + ',' + Math.min(0.36, alpha * 0.72) + ')';
+            // Ink mist: a soft low blob, darker than the flow, no hard edge.
+            ctx.fillStyle = 'rgba(' + Math.round(r * 0.45) + ',' + Math.round(g * 0.7) + ',' + Math.round(b * 0.76) + ',' + Math.min(0.30, alpha * 0.62) + ')';
             ctx.beginPath();
-            ctx.arc(particle.x, particle.y, Math.max(0.14, size * 0.34), 0, Math.PI * 2);
+            ctx.arc(particle.x, particle.y, Math.max(0.14, size * 0.3), 0, Math.PI * 2);
             ctx.fill();
           } else if (layer === 1) {
-            ctx.fillStyle = 'rgba(' + Math.min(255, pr + 22) + ',' + Math.min(255, pg + 20) + ',' + Math.min(255, pb + 14) + ',' + alpha * 0.5 + ')';
-            ctx.beginPath();
-            ctx.arc(particle.x, particle.y, Math.max(0.16, size * 0.3), 0, Math.PI * 2);
-            ctx.fill();
-          } else {
-            // Surface layer: a small catch-light stretched along the flow.
-            // Deliberately not a star or sparkle shape.
-            if (!this.profile.mobile && !this.profile.low) {
-              ctx.shadowBlur = this.risk > 85 ? 3 : 2;
-              ctx.shadowColor = 'rgba(' + pr + ',' + pg + ',' + pb + ',0.46)';
+            const headW = Math.max(0.5, size * 1.5);
+            const headAlpha = Math.min(0.85, alpha * 0.62);
+            // wet bleed first: a wider, fainter copy of the same stroke
+            if (this.tideConfig.inkBleed !== false && (i & 1) === 0) {
+              this.brushWedge(particle.x, particle.y, vx, vy, vMag,
+                headW * 2.1, tail * 1.5, 'rgba(' + pr + ',' + pg + ',' + pb + ',' + (headAlpha * 0.22) + ')');
             }
-            const stretch = size * (0.5 + particle.spark * 0.35);
-            ctx.fillStyle = 'rgba(' + Math.min(255, r + 46) + ',' + Math.min(255, g + 42) + ',' + Math.min(255, b + 34) + ',' + Math.min(0.9, alpha * 1.05) + ')';
-            ctx.beginPath();
-            ctx.arc(particle.x + vx / vMag * stretch, particle.y + vy / vMag * stretch, Math.max(0.16, size * 0.26), 0, Math.PI * 2);
-            ctx.fill();
-            ctx.shadowBlur = 0;
+            this.brushWedge(particle.x, particle.y, vx, vy, vMag,
+              headW, tail * 1.15, 'rgba(' + pr + ',' + pg + ',' + pb + ',' + headAlpha + ')');
+          } else {
+            // 飞白: a thin, drier streak that skips on some particles.
+            const fed = particle.spark > 0.42 ? 1 : 0.45;
+            const thin = Math.max(0.4, size * 0.62);
+            this.brushWedge(particle.x + vx / vMag * size * 0.4, particle.y + vy / vMag * size * 0.4,
+              vx, vy, vMag, thin, tail * 1.35 * fed,
+              'rgba(' + pr + ',' + pg + ',' + pb + ',' + Math.min(0.62, alpha * 0.52 * fed) + ')');
           }
         }
         ctx.restore();
