@@ -299,7 +299,7 @@
         return;
       }
 
-      const sampled = resampleSpline(clean, 4.5);
+      const sampled = resampleSpline(clean, 3.6);
       const count = sampled.length;
       const x = new Float32Array(count);
       const y = new Float32Array(count);
@@ -375,7 +375,7 @@
            its length - the thing that stops a stroke reading as a vector line. */
         const wave = Math.sin(t * Math.PI * 2 * strand.waveFreq + strand.wavePhase) * amplitude
           + Math.sin(t * Math.PI * 2 * strand.waveFreq * 2.37 + strand.wavePhase * 1.7 + strand.tint)
-            * amplitude * 0.48;
+            * amplitude * 0.32;
         const off = (strand.offset * baseWidth + wave) * gather;
         const px = path.x[i] + path.nx[i] * off;
         const py = path.y[i] + path.ny[i] * off;
@@ -412,7 +412,11 @@
     }
 
     update(dt) {
-      this.elapsed += dt;
+      /* Light temporal smoothing on dt: a single slow frame would otherwise
+         advance the brush in a visible step. Kept gentle so the loop never
+         drifts noticeably from real time. */
+      this.smoothDt = this.smoothDt ? this.smoothDt + (dt - this.smoothDt) * 0.25 : dt;
+      this.elapsed += this.smoothDt;
       const cfg = this.config;
       const speedScale = this.profile.reducedMotion ? (cfg.reducedMotionScale || 0.32) : 1;
       const riskGain = cfg.riskSpeedGain === undefined ? 0.38 : cfg.riskSpeedGain;
@@ -559,7 +563,11 @@
         const seed = hash01(r * 5.77 + 11.3);
         const speed = rangeAt(speeds, seed) * motion;
         const tailPx = rangeAt(tails, hash01(r * 3.1 + 2.2));
-        const headDist = ((this.elapsed * speed + seed) % 1) * path.total;
+        const phase = (this.elapsed * speed + seed) % 1;
+        const eased = clamp(phase + 0.035 * Math.sin(phase * Math.PI * 2), 0, 1);
+        const headDist = eased * path.total;
+        const env = smoothstep(0, 0.07, phase) * smoothstep(1, 0.93, phase);
+        if (env < 0.03) continue;
 
         for (let s = 0; s < segments; s += 1) {
           const t0 = s / segments;
@@ -571,7 +579,7 @@
           const i1 = this.indexAtDistance(Math.max(0, d1));
           const ramp = (t0 + t1) / 2;
           const width = Math.max(0.35, headWidth * Math.pow(ramp, 0.72));
-          const alpha = lerp(alphaRange[0], alphaRange[1], Math.pow(ramp, 1.45));
+          const alpha = lerp(alphaRange[0], alphaRange[1], smoothstep(0, 1, ramp)) * env;
           if (alpha < 0.012) continue;
           ctx.save();
           ctx.lineCap = 'round';
@@ -611,11 +619,11 @@
     }
 
     /* The brush itself: a pointed tip that leads, loaded with ink. */
-    drawBrushTip(ctx, x, y, tx, ty) {
+    drawBrushTip(ctx, x, y, tx, ty, env) {
       const tip = (this.config.brush && this.config.brush.tip) || {};
       const length = tip.length || 30;
       const width = tip.width || 5.4;
-      const alpha = tip.alpha === undefined ? 0.52 : tip.alpha;
+      const alpha = (tip.alpha === undefined ? 0.52 : tip.alpha) * (env === undefined ? 1 : env);
       const bristles = Math.max(0, tip.bristles === undefined ? 4 : tip.bristles);
       const nx = -ty;
       const ny = tx;
@@ -657,7 +665,15 @@
       if (!cfg.enabled || !path) return;
       const motion = this.profile.reducedMotion ? (this.config.reducedMotionScale || 0.32) : 1;
       const speed = (cfg.speed || 0.085) * motion;
-      const headDist = ((this.elapsed * speed) % 1) * path.total;
+      const phase = (this.elapsed * speed) % 1;
+      /* A hand does not travel at a constant rate: it eases out of the start
+         and settles into the end of the stroke. */
+      const eased = clamp(phase + 0.04 * Math.sin(phase * Math.PI * 2), 0, 1);
+      const headDist = eased * path.total;
+      /* Fade the brush in at the start and out at the end so the loop restart
+         never pops - the tip lifts and is re-inked off the paper. */
+      const env = smoothstep(0, 0.055, phase) * smoothstep(1, 0.945, phase);
+      if (env < 0.02) return;
       const windowLen = cfg.windowLength || 170;
       const passes = Math.max(1, cfg.passes || 5);
       const segments = 12;
@@ -672,7 +688,7 @@
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
       ctx.setLineDash([run, gapLen]);
-      ctx.lineDashOffset = -headDist * 0.55;
+      ctx.lineDashOffset = -headDist;   // 飞白 travels with the brush
       for (let p = 0; p < passes; p += 1) {
         const lateral = passes > 1
           ? ((p / (passes - 1)) - 0.5) * baseWidth * 0.66
@@ -686,8 +702,8 @@
           const i0 = this.indexAtDistance(Math.max(0, d0));
           const i1 = this.indexAtDistance(Math.max(0, d1));
           const ramp = (t0 + t1) / 2;
-          const wet = Math.pow(ramp, 1.6);        // wettest right at the tip
-          const alpha = alphaGain * wet * 0.46;
+          const wet = smoothstep(0, 1, ramp);     // wettest right at the tip
+          const alpha = alphaGain * wet * 0.46 * env;
           if (alpha < 0.012) continue;
           const nx0 = path.nx[i0];
           const ny0 = path.ny[i0];
@@ -709,12 +725,12 @@
       const tx = path.ny[hi];
       const ty = -path.nx[hi];
       const halo = cfg.halo;
-      if (halo) {
+      if (halo && env > 0.05) {
         const hx = path.x[hi];
         const hy = path.y[hi];
         const radius = halo.radius || 26;
         const grad = ctx.createRadialGradient(hx, hy, 0, hx, hy, radius);
-        grad.addColorStop(0, this.strandColour(0, halo.alpha === undefined ? 0.2 : halo.alpha));
+        grad.addColorStop(0, this.strandColour(0, (halo.alpha === undefined ? 0.2 : halo.alpha) * env));
         grad.addColorStop(1, this.strandColour(0, 0));
         ctx.save();
         ctx.fillStyle = grad;
@@ -723,7 +739,7 @@
         ctx.fill();
         ctx.restore();
       }
-      this.drawBrushTip(ctx, path.x[hi], path.y[hi], tx, ty);
+      if (env > 0.05) this.drawBrushTip(ctx, path.x[hi], path.y[hi], tx, ty, env);
     }
 
     pathAsPath() {
