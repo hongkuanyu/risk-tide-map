@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#efe8dc">
   <meta name="description" content="风险潮汐：把出行时间压力变成可见的水墨粒子流。">
   <title>风险潮汐 · 全国时间风险地图</title>
-  <link rel="stylesheet" href="vendor/maplibre-gl.css?v=56">
-  <link rel="stylesheet" href="styles.css?v=56">
+  <link rel="stylesheet" href="vendor/maplibre-gl.css?v=57">
+  <link rel="stylesheet" href="styles.css?v=57">
 </head>
 <body>
   <!-- 彩墨地图颜料分离滤镜：按“色相倾向”把底图分成水系 / 植被 / 暗部三层，
@@ -54,8 +54,18 @@
       <feComposite in="darkColor" in2="darkMask2" operator="in" result="darkLayer"/>
       <feBlend in="inkB" in2="darkLayer" mode="multiply" result="inkC"/>
 
-      <!-- ④ 宣纸留白：整体轻微提亮回暖，保留空气感 -->
-      <feColorMatrix in="inkC" type="matrix"
+      <!-- ④ 颗粒感 / 颜料局部沉积：用分形噪声调制颜料密度，
+           让颗粒属于颜色本身，而不是盖一层纹理 -->
+      <feTurbulence type="fractalNoise" baseFrequency="0.34" numOctaves="3" seed="11" result="inkGrain"/>
+      <feColorMatrix in="inkGrain" type="matrix" result="inkGrainTint"
+        values="0 0 0 0 1.000
+                0 0 0 0 0.992
+                0 0 0 0 0.972
+                0 0 0 0 1"/>
+      <feBlend in="inkC" in2="inkGrainTint" mode="multiply" result="inkD"/>
+
+      <!-- ⑤ 宣纸留白：整体轻微提亮回暖，保留空气感 -->
+      <feColorMatrix in="inkD" type="matrix"
         values="1.015 0 0 0 0.035
                 0 1.010 0 0 0.028
                 0 0 0.985 0 0.016
@@ -236,19 +246,19 @@
   </div>
 
   <noscript>此页面需要 JavaScript 才能运行水墨星云粒子与风险计算。</noscript>
-  <script src="vendor/maplibre-gl.js?v=56"></script>
-  <script src="data/config.js?v=56"></script>
-  <script src="data/routes.js?v=56"></script>
-  <script src="js/risk.js?v=56"></script>
-  <script src="js/flow-field.js?v=56"></script>
-  <script src="js/map.js?v=56"></script>
-  <script src="js/amap-map.js?v=56"></script>
-  <script src="js/particles.js?v=56"></script>
-  <script src="js/silk-route.js?v=56"></script>
-  <script src="js/warm-ui.js?v=56"></script>
-  <script src="js/location-search.js?v=56"></script>
-  <script src="js/ui.js?v=56"></script>
-  <script src="js/app.js?v=56"></script>
+  <script src="vendor/maplibre-gl.js?v=57"></script>
+  <script src="data/config.js?v=57"></script>
+  <script src="data/routes.js?v=57"></script>
+  <script src="js/risk.js?v=57"></script>
+  <script src="js/flow-field.js?v=57"></script>
+  <script src="js/map.js?v=57"></script>
+  <script src="js/amap-map.js?v=57"></script>
+  <script src="js/particles.js?v=57"></script>
+  <script src="js/silk-route.js?v=57"></script>
+  <script src="js/warm-ui.js?v=57"></script>
+  <script src="js/location-search.js?v=57"></script>
+  <script src="js/ui.js?v=57"></script>
+  <script src="js/app.js?v=57"></script>
 </body>
 </html>
 

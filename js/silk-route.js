@@ -675,7 +675,8 @@
       const env = smoothstep(0, 0.055, phase) * smoothstep(1, 0.945, phase);
       if (env < 0.02) return;
       const windowLen = cfg.windowLength || 170;
-      const passes = Math.max(1, cfg.passes || 5);
+      // 移动端减负：更少的湿墨 pass，并关闭晕圈重绘。
+      const passes = this.profile.mobile ? 3 : Math.max(1, cfg.passes || 5);
       const segments = 12;
       const alphaGain = cfg.headAlphaGain === undefined ? 0.55 : cfg.headAlphaGain;
       const widthGain = cfg.headWidthGain === undefined ? 0.30 : cfg.headWidthGain;
@@ -725,7 +726,7 @@
       const tx = path.ny[hi];
       const ty = -path.nx[hi];
       const halo = cfg.halo;
-      if (halo && env > 0.05) {
+      if (halo && env > 0.05 && !this.profile.mobile) {
         const hx = path.x[hi];
         const hy = path.y[hi];
         const radius = halo.radius || 26;

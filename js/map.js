@@ -227,7 +227,8 @@
             /* V4: a faint wet-ink bed under the silk strands. */
             'line-color': cssRgb(config.colors.safeBright, 0.11),
             'line-width': ['interpolate', ['linear'], ['zoom'], 10, 7, 15, 15],
-            'line-blur': 4
+            'line-blur': 4,
+            'line-opacity': 0
           }
         });
       }
@@ -241,7 +242,7 @@
           paint: {
             'line-color': cssRgb(config.colors.safe, 0.70),
             'line-width': ['interpolate', ['linear'], ['zoom'], 10, 0.7, 15, 1.4],
-            'line-opacity': 0.30
+            'line-opacity': 0
           }
         });
       }
@@ -255,7 +256,7 @@
           paint: {
             'line-color': cssRgb(config.colors.coolWhite, 0.6),
             'line-width': ['interpolate', ['linear'], ['zoom'], 10, 0.6, 15, 1.2],
-            'line-opacity': 0.14,
+            'line-opacity': 0,
             'line-dasharray': [0.3, 3.2]
           }
         });
@@ -358,7 +359,7 @@
       this.risk = risk;
       if (!this.map || !this.ready) return;
       const color = riskColor(risk);
-      const opacity = 0.26 + Math.max(0, (risk - 50) / 50) * 0.10;
+      const opacity = 0;   // InkFlowRenderer 拥有全部视觉
       const rasterOpacity = Math.max(0.48, config.map.rasterOpacity - Math.max(0, risk - 58) / 42 * 0.10);
 
       if (this.map.getLayer('risk-route-core')) {
@@ -366,7 +367,7 @@
         this.map.setPaintProperty('risk-route-core', 'line-opacity', opacity);
       }
       if (this.map.getLayer('risk-route-halo')) {
-        this.map.setPaintProperty('risk-route-halo', 'line-color', cssRgb(color, risk > 70 ? 0.19 : 0.11));
+        this.map.setPaintProperty('risk-route-halo', 'line-color', cssRgb(color, 0));
       }
       if (this.map.getLayer('risk-route-flow')) {
         this.map.setPaintProperty('risk-route-flow', 'line-color', cssRgb(color, risk > 70 ? 0.95 : 0.7));

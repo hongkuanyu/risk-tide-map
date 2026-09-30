@@ -288,7 +288,7 @@
         path: [],
         strokeColor: '#268f6f',
         strokeWeight: 16,
-        strokeOpacity: 0.11,
+        strokeOpacity: 0,
         lineJoin: 'round',
         lineCap: 'round',
         zIndex: 80
@@ -297,7 +297,7 @@
         path: [],
         strokeColor: '#268f6f',
         strokeWeight: 1.1,
-        strokeOpacity: 0.26,
+        strokeOpacity: 0,
         lineJoin: 'round',
         lineCap: 'round',
         showDir: false,
@@ -338,10 +338,11 @@
         return ('0' + Math.round(channel).toString(16)).slice(-2);
       }).join('');
       if (this.routePolyline) {
-        this.routePolyline.setOptions({ strokeColor: hex, strokeOpacity: 0.26, strokeWeight: this.risk > 70 ? 1.4 : 1.1 });
+        // 视觉主体完全交给 InkFlowRenderer；折线只作几何 / hit area。
+        this.routePolyline.setOptions({ strokeColor: hex, strokeOpacity: 0, strokeWeight: 1.1 });
       }
       if (this.routeHalo) {
-        this.routeHalo.setOptions({ strokeColor: hex, strokeOpacity: this.risk > 70 ? 0.16 : 0.11, strokeWeight: this.risk > 70 ? 20 : 16 });
+        this.routeHalo.setOptions({ strokeColor: hex, strokeOpacity: 0, strokeWeight: 16 });
       }
     }
 

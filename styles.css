@@ -398,7 +398,15 @@ button:disabled, input:disabled { opacity: 0.55; cursor: not-allowed; }
   min-height: 540px;
   border: 1px solid var(--line);
   border-radius: 20px;
-  background: #efe9da;
+  /* 宣纸 + 颜料沉积在**底图之下**：地图画布略微透明，颜色从纸里透出来，
+     而不是在上面盖一层 overlay。 */
+  background:
+    var(--ink-blooms, radial-gradient(44% 36% at 14% 26%, rgba(38,143,111,0.20), transparent 72%),
+    radial-gradient(38% 32% at 44% 80%, rgba(196,151,48,0.17), transparent 72%)),
+    url("assets/ink-texture.png"),
+    linear-gradient(160deg, #f1ebdd, #e7dfcd);
+  background-size: auto, auto, 300px 300px, auto;
+  background-blend-mode: normal, normal, multiply, normal;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55), var(--shadow);
 }
 
@@ -411,20 +419,8 @@ button:disabled, input:disabled { opacity: 0.55; cursor: not-allowed; }
    (see applyInkMapTheme in js/app.js), so tuning stays in one place. */
 .particle-canvas { position: absolute; inset: 0; z-index: 4; width: 100%; height: 100%; pointer-events: none; }
 
-.map::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  pointer-events: none;
-  background: var(--ink-blooms,
-    radial-gradient(44% 36% at 14% 26%, rgba(38, 143, 111, 0.16), transparent 72%),
-    radial-gradient(38% 32% at 44% 80%, rgba(196, 151, 48, 0.13), transparent 72%),
-    radial-gradient(37% 31% at 63% 20%, rgba(48, 92, 154, 0.15), transparent 72%),
-    radial-gradient(33% 29% at 84% 66%, rgba(166, 76, 54, 0.11), transparent 72%),
-    linear-gradient(118deg, rgba(239, 233, 218, 0.10), rgba(44, 132, 120, 0.045) 48%, rgba(61, 91, 145, 0.055)));
-  mix-blend-mode: multiply;
-}
+/* 原本的晕染 / 纸纹 overlay 已移除：颜料与宣纸改为在地图**之下**，
+   通过地图画布的轻微透明度透出（见下方 canvas opacity）。 */
 
 /* The pigment pass must reach whichever renderer is active. The previous
    rule only matched MapLibre, so turning AMap on silently dropped the whole
@@ -438,6 +434,8 @@ button:disabled, input:disabled { opacity: 0.55; cursor: not-allowed; }
 .map .amap-container canvas {
   /* Baseline tone pass; also the mobile fallback. */
   filter: var(--ink-canvas-filter, saturate(0.98) contrast(1.06) brightness(1.04) sepia(0.22) hue-rotate(-12deg));
+  /* 宣纸留白从底下透上来：不是加一层纸纹，而是让地图"印"在纸上。 */
+  opacity: 0.96;
 }
 
 /* Desktop gets a real colour relationship on top of the baseline: the SVG
@@ -464,19 +462,7 @@ button:disabled, input:disabled { opacity: 0.55; cursor: not-allowed; }
   }
 }
 
-/* 宣纸纤维：sits above the map, below the ink tide and the route. */
-.map-shell::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 3;
-  pointer-events: none;
-  background-image: url("assets/ink-texture.png"), url("assets/ink-texture.png");
-  background-size: 260px 260px, 560px 560px;
-  background-position: 0 0, 140px 210px;
-  opacity: var(--ink-texture-opacity, 0.18);
-  mix-blend-mode: multiply;
-}
+/* 纸纹 overlay 已移除：纸纹现在位于地图下方，透出来。 */
 
 .particle-canvas {
   mix-blend-mode: multiply;

@@ -132,7 +132,7 @@
       layerShare: { wet: 0.25, main: 0.42, highlight: 0.22, runner: 0.11 },
       alpha: {
         wet: [0.05, 0.12],
-        main: [0.17, 0.31],
+        main: [0.20, 0.36],
         highlight: [0.32, 0.46],
         runner: [0.34, 0.48]
       },
@@ -182,7 +182,7 @@
       runner: {
         count: 3,
         headSpeed: [0.55, 0.95],   // laps per second along the route
-        tailLength: [58, 118],     // px
+        tailLength: [30, 72],      // 约占路线 3%-10%
         headWidth: 2.2,
         segments: 14,
         alpha: [0.05, 0.42]
