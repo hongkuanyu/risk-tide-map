@@ -1,4 +1,4 @@
-﻿/* global window, document */
+/* global window, document */
 (function (global) {
   'use strict';
 
@@ -37,6 +37,43 @@
     out.g = Math.round(lerp(from[1], to[1], t));
     out.b = Math.round(lerp(from[2], to[2], t));
     return out;
+  }
+
+  /* Risk tone: the exact ramp the route line and the risk badge already use,
+     so the map and the tide never disagree about what "risky" looks like.
+     flat safe -> safe/gold -> gold/danger. */
+  function sampleRiskTone(risk, colors, out) {
+    const value = clamp(Number(risk) || 0, 0, 100);
+    let t;
+    if (value <= 30) {
+      out.r = colors.safe[0];
+      out.g = colors.safe[1];
+      out.b = colors.safe[2];
+      return out;
+    }
+    if (value <= 70) {
+      t = (value - 30) / 40;
+      out.r = Math.round(lerp(colors.safe[0], colors.gold[0], t));
+      out.g = Math.round(lerp(colors.safe[1], colors.gold[1], t));
+      out.b = Math.round(lerp(colors.safe[2], colors.gold[2], t));
+      return out;
+    }
+    t = (value - 70) / 30;
+    out.r = Math.round(lerp(colors.gold[0], colors.danger[0], t));
+    out.g = Math.round(lerp(colors.gold[1], colors.danger[1], t));
+    out.b = Math.round(lerp(colors.gold[2], colors.danger[2], t));
+    return out;
+  }
+
+  /* How much of that tone the water takes on. Calm water keeps its own
+     possibility palette; the tint only takes over once the buffer is tight.
+     Set tide.riskToneGain to 0 for the pure possibility palette. */
+  function riskToneWeight(risk, tide) {
+    const start = tide.riskToneStart !== undefined ? tide.riskToneStart : 0.2;
+    const end = tide.riskToneEnd !== undefined ? tide.riskToneEnd : 0.95;
+    const gain = tide.riskToneGain !== undefined ? tide.riskToneGain : 0.7;
+    const t = flow.smoothstep(start, end, clamp(Number(risk) || 0, 0, 100) / 100);
+    return clamp(t * gain, 0, 1);
   }
 
   /* Reads a [slack, taut] pair and interpolates by tension. */
@@ -79,6 +116,8 @@
       this.activeCount = 0;
       this.risk = 0;
       this.riskTarget = 0;
+      /* The colour the whole tide is pulled towards as the buffer shrinks. */
+      this.riskTone = { r: 46, g: 143, b: 168 };
       /* --- Possibility: the only colour channel ------------------------- */
       const poss = (config.tide && config.tide.possibility) || {};
       this.possibility = {
@@ -557,14 +596,25 @@
         if (current < target) this.branchClose[b] = Math.min(target, current + speed * dt);
         else if (current > target) this.branchClose[b] = Math.max(target, current - speed * dt);
       }
+      /* The possibility palette decides the hue family; the risk tone then
+         pulls the whole family towards gold/red, so dragging the departure
+         time is visible in the water itself, not just in the panel. */
+      const toneWeight = riskToneWeight(this.risk, tide);
+      if (toneWeight > 0) sampleRiskTone(this.risk, config.colors, this.riskTone);
       let wr = 0;
       let wg = 0;
       let wb = 0;
       for (let b = 0; b < pcount; b += 1) {
-        resolveBranchTone(this.possibility.tones[b], this.branchClose[b], this.possibility, this.branchRGB[b]);
-        wr += this.branchRGB[b].r;
-        wg += this.branchRGB[b].g;
-        wb += this.branchRGB[b].b;
+        const rgb = this.branchRGB[b];
+        resolveBranchTone(this.possibility.tones[b], this.branchClose[b], this.possibility, rgb);
+        if (toneWeight > 0) {
+          rgb.r = Math.round(lerp(rgb.r, this.riskTone.r, toneWeight));
+          rgb.g = Math.round(lerp(rgb.g, this.riskTone.g, toneWeight));
+          rgb.b = Math.round(lerp(rgb.b, this.riskTone.b, toneWeight));
+        }
+        wr += rgb.r;
+        wg += rgb.g;
+        wb += rgb.b;
       }
       // The water's overall colour is the mean of the branch tones, so it
       // converges to the surviving colour as branches are absorbed.
@@ -1139,7 +1189,9 @@
     }
   }
 
-  global.RiskTideParticles = InkParticleSystem;
+  InkParticleSystem.sampleRiskTone = sampleRiskTone;
+InkParticleSystem.riskToneWeight = riskToneWeight;
+global.RiskTideParticles = InkParticleSystem;
   global.RiskTideParticleProfile = detectProfile;
 })(window);
 

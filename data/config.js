@@ -208,6 +208,15 @@
         staggerPerBranch: 0.1
       },
 
+      /* ---- Risk tone: the clock still has to be visible ----------------
+         The possibility palette above decides the hue family; this pulls the
+         whole family towards gold and then red as the buffer shrinks, using
+         the same safe -> gold -> danger ramp as the route line and the risk
+         badge. Set riskToneGain to 0 to keep the pure possibility palette. */
+      riskToneGain: 0.7,    // 0 = off, 1 = the risk tone fully wins
+      riskToneStart: 0.2,   // tint starts around risk 20
+      riskToneEnd: 0.95,    // full strength around risk 95
+
       // ---- Trail -------------------------------------------------------
       trailLength: { fog: 1.05, flow: 1.35, highlight: 1.55 },
       trailSpeedGain: 0.35,

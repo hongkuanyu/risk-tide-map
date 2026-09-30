@@ -404,8 +404,11 @@ button:disabled, input:disabled { opacity: 0.55; cursor: not-allowed; }
 
 .map { position: absolute; inset: 0; z-index: 1; }
 
-/* Risk atmosphere: sits on the base map, under the ink tide. The base rule
-   was missing, which is why the danger/storm vignette never rendered. */
+/* Risk atmosphere slot, between the base map and the ink tide. It is kept
+   deliberately un-painted: a full-map wash darkens the whole map the moment
+   the risk crosses 70, which reads as "the picture went wrong" rather than
+   "this departure is risky". Risk is carried by the tide colour, the route
+   line and the risk badge instead. */
 .map-vignette {
   position: absolute;
   inset: 0;
@@ -857,13 +860,7 @@ button:disabled, input:disabled { opacity: 0.55; cursor: not-allowed; }
 
 /* ---------- risk states ---------- */
 .map-shell[data-risk-level="critical"] .map-grid { opacity: 0.36; }
-.map-shell[data-risk-level="danger"] .map-vignette,
-.map-shell[data-risk-level="storm"] .map-vignette {
-  opacity: 1;
-  background:
-    radial-gradient(120% 90% at 50% 42%, transparent 32%, rgba(80, 18, 16, 0.5) 100%),
-    linear-gradient(180deg, rgba(30, 36, 44, 0.18), rgba(60, 16, 16, 0.36));
-}
+/* No darkening at danger/storm - see the note on .map-vignette above. */
 .map-shell[data-risk-level="storm"] .map-grid { opacity: 0.22; }
 .map-shell[data-risk-level="storm"] .map-legend,
 .map-shell[data-risk-level="storm"] .map-status {
