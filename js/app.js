@@ -34,6 +34,9 @@
     const silk = (config.silk && config.silk.enabled && global.RiskTideSilkRoute && silkCanvas)
       ? new global.RiskTideSilkRoute(silkCanvas, mapController)
       : null;
+    const inkFlow = (config.inkFlow && config.inkFlow.enabled && global.RiskTideInkFlow && silkCanvas)
+      ? new global.RiskTideInkFlow(silkCanvas, mapController)
+      : null;
     const ui = new global.RiskTideUI(global.routes);
 
     /* The ink-map palette lives in data/config.js; publish it to CSS so the
@@ -70,6 +73,7 @@
     function pushRisk(risk) {
       particles.setRisk(risk);
       if (silk) silk.setRisk(risk);
+      if (inkFlow) inkFlow.setRisk(risk);
       mapController.setRisk(risk);
     }
 
@@ -89,6 +93,7 @@
         mapController.setRoute(route);
         particles.setRoute(route);
         if (silk) silk.setRoute(route);
+        if (inkFlow) inkFlow.setRoute(route);
         lastRouteKey = routeKey;
       }
 
@@ -110,6 +115,7 @@
       onMovement: function (moving) {
         particles.routeDirty = true;
         if (silk) silk.routeDirty = true;
+        if (inkFlow) inkFlow.routeDirty = true;
         /* Skip the hue-selective pigment passes while the map is moving so
            panning/zooming keeps its frame budget. */
         if (shell) shell.classList.toggle('is-moving', !!moving);
@@ -117,6 +123,7 @@
           global.setTimeout(function () {
             particles.routeDirty = true;
             if (silk) silk.routeDirty = true;
+            if (inkFlow) inkFlow.routeDirty = true;
             if (typeof particles.rebuildProjectedPath === 'function') particles.rebuildProjectedPath();
           }, 80);
         }
@@ -126,6 +133,7 @@
           particles.resize();
           particles.routeDirty = true;
           if (silk) { silk.resize(); silk.routeDirty = true; }
+          if (inkFlow) { inkFlow.resize(); inkFlow.routeDirty = true; }
           ui.setStatus('地图底图已加载 · 路线规划同步中', 'normal');
         } else {
           ui.setStatus(status.message || '地图已降级，粒子仍持续流动。', 'warning');
@@ -162,6 +170,7 @@
       particles.bindPointer(document.getElementById('map-shell'));
     }
     if (silk) silk.start();
+    if (inkFlow) inkFlow.start();
     applyState(ui.getState());
 
     function showcaseTick(timestamp) {
@@ -265,6 +274,7 @@
       const visible = !document.hidden;
       particles.setVisible(visible);
       if (silk) silk.setVisible(visible);
+      if (inkFlow) inkFlow.setVisible(visible);
       if (!visible) {
         global.cancelAnimationFrame(showcaseFrame);
       } else if (showcaseActive) {
@@ -283,13 +293,17 @@
         particles.resize();
         particles.routeDirty = true;
         if (silk) { silk.resize(); silk.routeDirty = true; }
+        if (inkFlow) { inkFlow.resize(); inkFlow.routeDirty = true; }
       }, 120);
     }, { passive: true });
 
     global.setInterval(function () {
       if (showcaseActive) return;
       const metrics = particles.getMetrics();
-      if (!particleTideEnabled && silk) {
+      if (inkFlow) {
+        const flow = inkFlow.getMetrics();
+        ui.updateMetrics({ text: (metrics.mobile ? '移动端' : '桌面端') + ' · 彩墨流场 · ' + flow.grid + ' 网格 · ' + flow.wet + ' 活跃格' });
+      } else if (!particleTideEnabled && silk) {
         const state = silk.getMetrics();
         ui.updateMetrics({
           text: (metrics.mobile ? '移动端' : '桌面端') + ' · 毛笔墨流 · '
@@ -304,6 +318,7 @@
       map: mapController,
       particles: particles,
       silk: silk,
+      inkFlow: inkFlow,
       ui: ui,
       result: function () { return latestResult; }
     };

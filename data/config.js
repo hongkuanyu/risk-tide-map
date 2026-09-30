@@ -124,7 +124,9 @@
        Replaces the solid navigation polyline with 12-24 semi-transparent ink
        strands. Consumes the existing route points + risk score only. */
     silk: {
-      enabled: true,
+      /* V6：路线不再由墨丝线层绘制，改由 inkFlow 的连续墨体承担。
+         InkFlowRenderer 未启用时会自动回退到这套墨丝渲染。 */
+      enabled: false,
       strands: { desktop: 24, mobile: 16 },      // 12-24 per the brief
       baseWidth: { desktop: [10, 13], mobile: [8.5, 11] },
       strandWidth: [1.0, 1.9],                    // 1-2.5px ink hairs, fine end
@@ -189,6 +191,25 @@
       },
       dpr: { desktop: 2, mobile: 1.75 },
       reducedMotionScale: 0.32
+    },
+
+    /* ---- V6 · InkFlowRenderer ------------------------------------------
+       The route is a persistent ink body pushed through a velocity field:
+       advection -> diffusion -> decay -> injection. No lines, no moving
+       points. See js/ink-flow.js. */
+    inkFlow: {
+      enabled: true,
+
+
+      speed: 46,            // px/s along the route at the core
+      edgeShear: 0.35,      // edges lag the core -> stretching / shear
+      curveSwirl: 0.55,     // rotational term at bends -> curl and vortices
+
+
+
+      warmBias: 0.24,       // second pigment field -> internal colour drift
+      colourEaseMs: 280,
+      prewarmSteps: 150
     },
 
     particleBudgets: {
