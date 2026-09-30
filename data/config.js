@@ -197,6 +197,18 @@
        The route is a persistent ink body pushed through a velocity field:
        advection -> diffusion -> decay -> injection. No lines, no moving
        points. See js/ink-flow.js. */
+    /* WebGL2 path: same API as inkFlow, ping-pong feedback. Off until it has
+       been verified on the target devices - flip to true to try it. */
+    inkGL: {
+      enabled: false,
+      sim: 256,
+      influence: { radius: 14 },
+      speed: 60,
+      decay: 0.99,
+      injection: 1.0,
+      warmBias: 0.24
+    },
+
     inkFlow: {
       enabled: true,
       grid: { desktop: 300, mobile: 200 },   // finer grid -> crisper core

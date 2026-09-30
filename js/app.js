@@ -34,9 +34,16 @@
     const silk = (config.silk && config.silk.enabled && global.RiskTideSilkRoute && silkCanvas)
       ? new global.RiskTideSilkRoute(silkCanvas, mapController)
       : null;
-    const inkFlow = (config.inkFlow && config.inkFlow.enabled && global.RiskTideInkFlow && silkCanvas)
-      ? new global.RiskTideInkFlow(silkCanvas, mapController)
+    /* One slot, two backends. They expose the same API, so every call site
+       below is backend-agnostic and the WebGL2 path can be adopted (or rolled
+       back) by flipping config.inkGL.enabled. */
+    const inkGL = (config.inkGL && config.inkGL.enabled && global.RiskTideInkGL && silkCanvas)
+      ? new global.RiskTideInkGL(silkCanvas, mapController)
       : null;
+    const inkFlow = (inkGL && !inkGL.failed) ? inkGL
+      : ((config.inkFlow && config.inkFlow.enabled && global.RiskTideInkFlow && silkCanvas)
+        ? new global.RiskTideInkFlow(silkCanvas, mapController)
+        : null);
     const ui = new global.RiskTideUI(global.routes);
 
     /* The ink-map palette lives in data/config.js; publish it to CSS so the
@@ -302,7 +309,7 @@
       const metrics = particles.getMetrics();
       if (inkFlow) {
         const flow = inkFlow.getMetrics();
-        ui.updateMetrics({ text: (metrics.mobile ? '移动端' : '桌面端') + ' · 彩墨流场 · ' + flow.grid + ' 网格 · ' + flow.wet + ' 活跃格' });
+        ui.updateMetrics({ text: (metrics.mobile ? '移动端' : '桌面端') + ' · 彩墨流场 · ' + (flow.grid || flow.sim || '') + (flow.wet !== undefined ? ' · ' + flow.wet + ' 活跃格' : ' · ' + (flow.backend || '')) + (flow.frameMs ? ' · ' + flow.frameMs + 'ms' : '') });
       } else if (!particleTideEnabled && silk) {
         const state = silk.getMetrics();
         ui.updateMetrics({
