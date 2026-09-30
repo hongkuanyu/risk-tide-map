@@ -403,34 +403,103 @@ button:disabled, input:disabled { opacity: 0.55; cursor: not-allowed; }
 }
 
 .map { position: absolute; inset: 0; z-index: 1; }
-.particle-canvas { position: absolute; inset: 0; z-index: 3; width: 100%; height: 100%; pointer-events: none; }
+/* ---------- V4 · 彩墨地图 (mineral pigment on 宣纸) ---------------------
+   Layer order inside .map-shell:
+     1 map canvas  2 pigment blooms  3 paper grain
+     4 ink tide    5 grid            6 silk route     12+ UI
+   The palette / filter values are injected from data/config.js -> inkMap
+   (see applyInkMapTheme in js/app.js), so tuning stays in one place. */
+.particle-canvas { position: absolute; inset: 0; z-index: 4; width: 100%; height: 100%; pointer-events: none; }
 
-/* ---------- V3 vivid modern ink map ---------- */
 .map::after {
   content: "";
   position: absolute;
   inset: 0;
   z-index: 2;
   pointer-events: none;
-  background:
-    radial-gradient(42% 34% at 15% 28%, rgba(38, 143, 111, 0.13), transparent 72%),
-    radial-gradient(36% 31% at 42% 78%, rgba(196, 151, 48, 0.11), transparent 72%),
-    radial-gradient(35% 30% at 61% 23%, rgba(48, 92, 154, 0.12), transparent 72%),
-    radial-gradient(31% 28% at 82% 64%, rgba(166, 76, 54, 0.09), transparent 72%),
-    linear-gradient(118deg, rgba(239, 233, 218, 0.10), rgba(44, 132, 120, 0.035) 48%, rgba(61, 91, 145, 0.05));
+  background: var(--ink-blooms,
+    radial-gradient(44% 36% at 14% 26%, rgba(38, 143, 111, 0.16), transparent 72%),
+    radial-gradient(38% 32% at 44% 80%, rgba(196, 151, 48, 0.13), transparent 72%),
+    radial-gradient(37% 31% at 63% 20%, rgba(48, 92, 154, 0.15), transparent 72%),
+    radial-gradient(33% 29% at 84% 66%, rgba(166, 76, 54, 0.11), transparent 72%),
+    linear-gradient(118deg, rgba(239, 233, 218, 0.10), rgba(44, 132, 120, 0.045) 48%, rgba(61, 91, 145, 0.055)));
   mix-blend-mode: multiply;
 }
-.map .maplibregl-canvas {
-  filter: sepia(.12) saturate(1.42) contrast(.94) brightness(1.06);
+
+/* The pigment pass must reach whichever renderer is active. The previous
+   rule only matched MapLibre, so turning AMap on silently dropped the whole
+   ink-map treatment - the map looked grey next to the tinted panel. */
+.ink-filter-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
+
+.map .maplibregl-canvas,
+.map canvas.amap-layer,
+.map .amap-maps canvas,
+.map .amap-layers canvas,
+.map .amap-container canvas {
+  /* Baseline tone pass; also the mobile fallback. */
+  filter: var(--ink-canvas-filter, saturate(0.98) contrast(1.06) brightness(1.04) sepia(0.22) hue-rotate(-12deg));
 }
+
+/* Desktop gets a real colour relationship on top of the baseline: the SVG
+   filter in index.html splits the basemap into water / vegetation / shadow
+   layers and multiplies each with its own mineral pigment (孔雀青 / 竹青 /
+   赭石). This is hue-selective, not a global sepia wash. */
+@media (min-width: 821px) {
+  .map .maplibregl-canvas,
+  .map canvas.amap-layer,
+  .map .amap-maps canvas,
+  .map .amap-layers canvas,
+  .map .amap-container canvas {
+    filter: url(#inkPigment) var(--ink-canvas-filter, saturate(0.98) contrast(1.06) brightness(1.04) sepia(0.22) hue-rotate(-12deg));
+  }
+
+  /* Panning and zooming skip the extra passes so dragging stays smooth; the
+     pigment returns the moment the map settles. */
+  .map-shell.is-moving .map .maplibregl-canvas,
+  .map-shell.is-moving .map canvas.amap-layer,
+  .map-shell.is-moving .map .amap-maps canvas,
+  .map-shell.is-moving .map .amap-layers canvas,
+  .map-shell.is-moving .map .amap-container canvas {
+    filter: var(--ink-canvas-filter, saturate(0.98) contrast(1.06) brightness(1.04) sepia(0.22) hue-rotate(-12deg));
+  }
+}
+
+/* 宣纸纤维：sits above the map, below the ink tide and the route. */
+.map-shell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  background-image: url("assets/ink-texture.png"), url("assets/ink-texture.png");
+  background-size: 260px 260px, 560px 560px;
+  background-position: 0 0, 140px 210px;
+  opacity: var(--ink-texture-opacity, 0.18);
+  mix-blend-mode: multiply;
+}
+
 .particle-canvas {
   mix-blend-mode: multiply;
+}
+
+/* ---------- V4 · 丝绸湿墨路线 ---------- */
+.silk-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  /* Normal blending, not multiply: the strands are already semi-transparent
+     (alpha .05-.45) and must read as luminous silk over the map rather than
+     stacking with the multiplied ink tide into a dark smear. */
+  mix-blend-mode: normal;
 }
 
 .map-grid {
   position: absolute;
   inset: 0;
-  z-index: 4;
+  z-index: 5;
   pointer-events: none;
   opacity: 0.34;
   background-image:

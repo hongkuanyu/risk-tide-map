@@ -1,4 +1,4 @@
-﻿/* global window, document */
+/* global window, document */
 (function (global) {
   'use strict';
 
@@ -29,7 +29,34 @@
     const mapController = useAmap ? new global.RiskTideAmapMap() : new global.RiskTideMap();
     const particleCanvas = document.getElementById('particle-canvas');
     const particles = new global.RiskTideParticles(particleCanvas, mapController);
+    const shell = document.getElementById('map-shell');
+    const silkCanvas = document.getElementById('silk-canvas');
+    const silk = (config.silk && config.silk.enabled && global.RiskTideSilkRoute && silkCanvas)
+      ? new global.RiskTideSilkRoute(silkCanvas, mapController)
+      : null;
     const ui = new global.RiskTideUI(global.routes);
+
+    /* The ink-map palette lives in data/config.js; publish it to CSS so the
+       pigment blooms, the map filter and the paper grain have one source of
+       truth between the config and the stylesheet. */
+    function applyInkMapTheme() {
+      const ink = config.inkMap;
+      const shell = document.getElementById('map-shell');
+      if (!ink || !ink.enabled || !shell) return;
+      if (ink.blooms && ink.blooms.length) {
+        const parts = ink.blooms.map(function (b) {
+          return 'radial-gradient(' + b.rx + '% ' + b.ry + '% at ' + b.x + '% ' + b.y + '%, rgba('
+            + b.color + ',' + b.alpha + '), transparent 72%)';
+        });
+        parts.push(ink.baseWash);
+        shell.style.setProperty('--ink-blooms', parts.join(', '));
+      }
+      if (ink.canvasFilter) shell.style.setProperty('--ink-canvas-filter', ink.canvasFilter);
+      if (ink.textureOpacity !== undefined) {
+        shell.style.setProperty('--ink-texture-opacity', String(ink.textureOpacity));
+      }
+    }
+    applyInkMapTheme();
     let showcaseActive = false;
     let showcaseStart = 0;
     let showcaseFrame = 0;
@@ -42,6 +69,7 @@
 
     function pushRisk(risk) {
       particles.setRisk(risk);
+      if (silk) silk.setRisk(risk);
       mapController.setRisk(risk);
     }
 
@@ -60,6 +88,7 @@
         const route = getSelectedRoute(state);
         mapController.setRoute(route);
         particles.setRoute(route);
+        if (silk) silk.setRoute(route);
         lastRouteKey = routeKey;
       }
 
@@ -80,9 +109,14 @@
       canvasStage: document.getElementById('map-shell'),
       onMovement: function (moving) {
         particles.routeDirty = true;
+        if (silk) silk.routeDirty = true;
+        /* Skip the hue-selective pigment passes while the map is moving so
+           panning/zooming keeps its frame budget. */
+        if (shell) shell.classList.toggle('is-moving', !!moving);
         if (!moving) {
           global.setTimeout(function () {
             particles.routeDirty = true;
+            if (silk) silk.routeDirty = true;
             if (typeof particles.rebuildProjectedPath === 'function') particles.rebuildProjectedPath();
           }, 80);
         }
@@ -91,6 +125,7 @@
         if (status.state === 'ready') {
           particles.resize();
           particles.routeDirty = true;
+          if (silk) { silk.resize(); silk.routeDirty = true; }
           ui.setStatus('地图底图已加载 · 路线规划同步中', 'normal');
         } else {
           ui.setStatus(status.message || '地图已降级，粒子仍持续流动。', 'warning');
@@ -108,10 +143,15 @@
       mapController.setRoute(getSelectedRoute(ui.getState()));
       particles.setRoute(getSelectedRoute(ui.getState()));
       particles.routeDirty = true;
+      if (silk) {
+        silk.setRoute(getSelectedRoute(ui.getState()));
+        silk.routeDirty = true;
+      }
       if (typeof particles.rebuildProjectedPath === 'function') particles.rebuildProjectedPath();
     });
 
     particles.start();
+    if (silk) silk.start();
     // Risk Tide V2 pointer layer: hover wake, click ripple, route resonance.
     // All three are visual-only and reuse the existing animation loop.
     particles.bindPointer(document.getElementById('map-shell'));
@@ -177,10 +217,12 @@
             }).catch(function () {
               mapController.setRoute(getSelectedRoute(ui.getState()));
               particles.setRoute(getSelectedRoute(ui.getState()));
+              if (silk) silk.setRoute(getSelectedRoute(ui.getState()));
             });
           } else {
             mapController.setRoute(getSelectedRoute(ui.getState()));
             particles.setRoute(getSelectedRoute(ui.getState()));
+            if (silk) silk.setRoute(getSelectedRoute(ui.getState()));
           }
         },
         onLocate: function () {
@@ -215,6 +257,7 @@
     function handleVisibility() {
       const visible = !document.hidden;
       particles.setVisible(visible);
+      if (silk) silk.setVisible(visible);
       if (!visible) {
         global.cancelAnimationFrame(showcaseFrame);
       } else if (showcaseActive) {
@@ -232,6 +275,7 @@
         mapController.resize();
         particles.resize();
         particles.routeDirty = true;
+        if (silk) { silk.resize(); silk.routeDirty = true; }
       }, 120);
     }, { passive: true });
 
@@ -242,6 +286,7 @@
     global.RiskTideApp = {
       map: mapController,
       particles: particles,
+      silk: silk,
       ui: ui,
       result: function () { return latestResult; }
     };

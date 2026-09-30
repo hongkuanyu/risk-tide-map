@@ -33,12 +33,31 @@
     ];
   }
 
+  function smoothstep01(t) {
+    const x = Math.max(0, Math.min(1, t));
+    return x * x * (3 - 2 * x);
+  }
+
+  /* Continuous multi-stop risk ramp: 青碧 -> 青绿 -> 金 -> 金橙 -> 橙朱 ->
+     朱砂 -> 深朱红, interpolated with smoothstep so colour never jumps.
+     Shared with js/silk-route.js and the risk bar in the panel. */
   function riskColor(risk) {
     const colors = config.colors;
     const value = Math.max(0, Math.min(100, Number(risk) || 0));
-    if (value <= 30) return colors.safe;
-    if (value <= 70) return mixRgb(colors.safe, colors.gold, (value - 30) / 40);
-    return mixRgb(colors.gold, colors.danger, (value - 70) / 30);
+    const ramp = config.silk && config.silk.riskRamp;
+    if (!ramp || !ramp.length) {
+      if (value <= 30) return colors.safe;
+      if (value <= 70) return mixRgb(colors.safe, colors.gold, (value - 30) / 40);
+      return mixRgb(colors.gold, colors.danger, (value - 70) / 30);
+    }
+    const t = value / 100;
+    let a = ramp[0];
+    let b = ramp[ramp.length - 1];
+    for (let i = 1; i < ramp.length; i += 1) {
+      if (t <= ramp[i].at) { a = ramp[i - 1]; b = ramp[i]; break; }
+    }
+    const span = (b.at - a.at) || 1;
+    return mixRgb(a.rgb, b.rgb, smoothstep01((t - a.at) / span));
   }
 
   function routeGeometry(route, fallback) {
@@ -205,9 +224,10 @@
           source: 'risk-route',
           layout: { 'line-cap': 'round', 'line-join': 'round' },
           paint: {
-            'line-color': cssRgb(config.colors.safeBright, 0.13),
-            'line-width': ['interpolate', ['linear'], ['zoom'], 10, 10, 15, 22],
-            'line-blur': 3
+            /* V4: a faint wet-ink bed under the silk strands. */
+            'line-color': cssRgb(config.colors.safeBright, 0.11),
+            'line-width': ['interpolate', ['linear'], ['zoom'], 10, 7, 15, 15],
+            'line-blur': 4
           }
         });
       }
@@ -219,10 +239,9 @@
           source: 'risk-route',
           layout: { 'line-cap': 'round', 'line-join': 'round' },
           paint: {
-            'line-color': cssRgb(config.colors.safe, 0.78),
-            'line-width': ['interpolate', ['linear'], ['zoom'], 10, 2.6, 15, 5.6],
-            'line-opacity': 0.34,
-            'line-dasharray': [1.2, 1.8]
+            'line-color': cssRgb(config.colors.safe, 0.70),
+            'line-width': ['interpolate', ['linear'], ['zoom'], 10, 0.7, 15, 1.4],
+            'line-opacity': 0.30
           }
         });
       }
@@ -234,9 +253,9 @@
           source: 'risk-route',
           layout: { 'line-cap': 'butt', 'line-join': 'round' },
           paint: {
-            'line-color': cssRgb(config.colors.coolWhite, 0.7),
-            'line-width': ['interpolate', ['linear'], ['zoom'], 10, 1.3, 15, 3.0],
-            'line-opacity': 0.24,
+            'line-color': cssRgb(config.colors.coolWhite, 0.6),
+            'line-width': ['interpolate', ['linear'], ['zoom'], 10, 0.6, 15, 1.2],
+            'line-opacity': 0.14,
             'line-dasharray': [0.3, 3.2]
           }
         });
@@ -339,7 +358,7 @@
       this.risk = risk;
       if (!this.map || !this.ready) return;
       const color = riskColor(risk);
-      const opacity = 0.28 + Math.max(0, (risk - 50) / 50) * 0.10;
+      const opacity = 0.26 + Math.max(0, (risk - 50) / 50) * 0.10;
       const rasterOpacity = Math.max(0.48, config.map.rasterOpacity - Math.max(0, risk - 58) / 42 * 0.10);
 
       if (this.map.getLayer('risk-route-core')) {
@@ -347,7 +366,7 @@
         this.map.setPaintProperty('risk-route-core', 'line-opacity', opacity);
       }
       if (this.map.getLayer('risk-route-halo')) {
-        this.map.setPaintProperty('risk-route-halo', 'line-color', cssRgb(color, risk > 70 ? 0.24 : 0.13));
+        this.map.setPaintProperty('risk-route-halo', 'line-color', cssRgb(color, risk > 70 ? 0.19 : 0.11));
       }
       if (this.map.getLayer('risk-route-flow')) {
         this.map.setPaintProperty('risk-route-flow', 'line-color', cssRgb(color, risk > 70 ? 0.95 : 0.7));

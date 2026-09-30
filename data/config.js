@@ -96,6 +96,84 @@
       coolWhite: [219, 247, 238]
     },
 
+    /* ---- V4 · 彩墨地图 (modern mineral-pigment ink map) ----------------
+       The base map is pushed towards 宣纸 + 矿物颜料 in layers rather than a
+       single sepia filter: one filter pass for the tile canvas, then blooms,
+       washes and paper grain blended on top of it in CSS. */
+    inkMap: {
+      enabled: true,
+      paper: '#efe9da',
+      /* Applied to the raster/vector map canvas only - never to markers,
+         the route or the ink tide. */
+      canvasFilter: 'saturate(0.90) contrast(1.07) brightness(1.04) sepia(0.24) hue-rotate(-16deg)',
+      /* 孔雀青 / 竹青 / 石青 / 藤黄 / 赭石 / 胭脂 - pigment pooling */
+      blooms: [
+        { x: 14, y: 26, rx: 44, ry: 36, color: '38, 143, 111', alpha: 0.20 },
+        { x: 44, y: 80, rx: 38, ry: 32, color:  '196, 151, 48', alpha: 0.17 },
+        { x: 63, y: 20, rx: 37, ry: 31, color:   '48, 92, 154', alpha: 0.19 },
+        { x: 84, y: 66, rx: 33, ry: 29, color:  '166, 76, 54', alpha: 0.14 },
+        { x: 30, y: 55, rx: 30, ry: 26, color:   '86, 128, 96', alpha: 0.13 },
+        { x: 70, y: 46, rx: 26, ry: 22, color:  '214, 178, 92', alpha: 0.10 }
+      ],
+      baseWash: 'linear-gradient(118deg, rgba(239,233,218,0.10), rgba(44,132,120,0.045) 48%, rgba(61,91,145,0.055))',
+      textureOpacity: 0.18,
+      grainOpacity: 0.30
+    },
+
+    /* ---- V4 · 丝绸湿墨路线 (silk wet-ink route) ------------------------
+       Replaces the solid navigation polyline with 12-24 semi-transparent ink
+       strands. Consumes the existing route points + risk score only. */
+    silk: {
+      enabled: true,
+      strands: { desktop: 24, mobile: 16 },      // 12-24 per the brief
+      baseWidth: { desktop: [10, 13], mobile: [8.5, 11] },
+      strandWidth: [1.0, 1.9],                    // 1-2.5px ink hairs, fine end
+      /* wet ink diffusion / main strands / moving highlight / ink runners */
+      layerShare: { wet: 0.25, main: 0.42, highlight: 0.22, runner: 0.11 },
+      alpha: {
+        wet: [0.05, 0.12],
+        main: [0.20, 0.36],
+        highlight: [0.32, 0.46],
+        runner: [0.34, 0.48]
+      },
+      speed: [0.85, 1.20],                        // per-strand flow multiplier
+      breathe: [0.90, 1.10],                      // slow width breathing
+      breathePeriod: [7.5, 13.5],                 // seconds
+      waveAmp: 0.34,                              // lateral silk wobble
+      waveFreq: [0.35, 0.95],
+      centreBias: 1.35,                           // >1 keeps strands dense at centre
+      envelope: 0.22,                             // strands converge at both ends
+      /* 飞白 / 断墨: dash pattern per strand, in px */
+      dash: { minRun: 40, maxRun: 140, minGap: 2, maxGap: 10, brokenShare: 0.26 },
+      riskRamp: [
+        { at: 0.00, rgb: [0, 124, 108] },   // 青碧 / 孔雀青
+        { at: 0.27, rgb: [15, 137, 105] },  // 青绿
+        { at: 0.46, rgb: [188, 151, 34] },  // 金
+        { at: 0.61, rgb: [224, 137, 19] },  // 金橙
+        { at: 0.77, rgb: [229, 82, 16] },   // 橙朱
+        { at: 0.90, rgb: [215, 49, 23] },   // 朱砂
+        { at: 1.00, rgb: [181, 25, 25] }    // 深朱红
+      ],
+      colourEaseMs: 280,                          // temporal easing on risk
+      flowSpeed: 34,                              // px per second along the route
+      riskSpeedGain: 0.38,                        // faster when risky, gently
+      pulse: { minAlphaGain: 0.05, riskGain: 0.10, freq: 0.42 },
+      cinnabarPulse: { riskThreshold: 86, period: 6.5, width: 0.16, alpha: 0.20 },
+      /* Layer D: a flowing ink unit with a long tapering tail (Bezier-ish),
+         not a dot. Each runner is drawn as sub-segments whose width and alpha
+         ramp from tail to head. */
+      runner: {
+        count: 3,
+        headSpeed: [0.55, 0.95],   // laps per second along the route
+        tailLength: [58, 118],     // px
+        headWidth: 2.2,
+        segments: 14,
+        alpha: [0.05, 0.42]
+      },
+      dpr: { desktop: 2, mobile: 1.75 },
+      reducedMotionScale: 0.32
+    },
+
     particleBudgets: {
       desktop: { low: 2000, base: 2800, high: 3100, maximum: 3400 },
       mobile: { low: 560, base: 880, high: 960, maximum: 1050 },
@@ -146,9 +224,9 @@
       trailSegments: { fog: 3, flow: 5, highlight: 4 },
 
       // ---- Layer depth (deliberately subtle) ---------------------------
-      layerOpacity: { fog: 0.82, flow: 0.92, highlight: 0.88 },
+      layerOpacity: { fog: 0.58, flow: 0.84, highlight: 0.88 },
       layerSize: { fog: 1.22, flow: 1.28, highlight: 1.14 },
-      globalOpacity: 0.92,
+      globalOpacity: 0.76,
 
       // ---- Lifecycle ---------------------------------------------------
       lifeFadeIn: 0.1,

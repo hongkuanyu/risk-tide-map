@@ -6,10 +6,62 @@
   <meta name="theme-color" content="#efe8dc">
   <meta name="description" content="风险潮汐：把出行时间压力变成可见的水墨粒子流。">
   <title>风险潮汐 · 全国时间风险地图</title>
-  <link rel="stylesheet" href="vendor/maplibre-gl.css?v=48">
-  <link rel="stylesheet" href="styles.css?v=48">
+  <link rel="stylesheet" href="vendor/maplibre-gl.css?v=53">
+  <link rel="stylesheet" href="styles.css?v=53">
 </head>
 <body>
+  <!-- 彩墨地图颜料分离滤镜：按“色相倾向”把底图分成水系 / 植被 / 暗部三层，
+       各自以矿物颜料 multiply 叠回，而不是套一个全局 sepia/saturate。
+       静态写在页面里，保证即使 JS 失败也不会出现 filter 引用缺失。 -->
+  <svg class="ink-filter-defs" width="0" height="0" aria-hidden="true" focusable="false">
+    <filter id="inkPigment" color-interpolation-filters="sRGB" x="0" y="0" width="100%" height="100%">
+      <!-- ① 水系：偏青蓝的像素 → 孔雀青 / 石青 -->
+      <feColorMatrix in="SourceGraphic" type="matrix" result="waterMask"
+        values="0 0 0 0 0
+                0 0 0 0 0
+                0 0 0 0 0
+                -1.7 0 1.7 0 0"/>
+      <feComponentTransfer in="waterMask" result="waterMask2">
+        <feFuncA type="table" tableValues="0 0 0.16 0.38 0.54"/>
+      </feComponentTransfer>
+      <feFlood flood-color="#63b6a6" result="waterColor"/>
+      <feComposite in="waterColor" in2="waterMask2" operator="in" result="waterLayer"/>
+      <feBlend in="SourceGraphic" in2="waterLayer" mode="multiply" result="inkA"/>
+
+      <!-- ② 植被 / 公园：偏绿的像素 → 竹青 / 灰绿 -->
+      <feColorMatrix in="inkA" type="matrix" result="vegMask"
+        values="0 0 0 0 0
+                0 0 0 0 0
+                0 0 0 0 0
+                -2.3 4.6 -2.3 0 0"/>
+      <feComponentTransfer in="vegMask" result="vegMask2">
+        <feFuncA type="table" tableValues="0 0 0.30 0.72 1"/>
+      </feComponentTransfer>
+      <feFlood flood-color="#86ad63" result="vegColor"/>
+      <feComposite in="vegColor" in2="vegMask2" operator="in" result="vegLayer"/>
+      <feBlend in="inkA" in2="vegLayer" mode="multiply" result="inkB"/>
+
+      <!-- ③ 暗部 / 道路 / 文字：低亮度像素 → 赭石 + 暖墨褐 -->
+      <feColorMatrix in="inkB" type="matrix" result="darkMask"
+        values="0 0 0 0 0
+                0 0 0 0 0
+                0 0 0 0 0
+                -0.34 -0.34 -0.34 0 0.92"/>
+      <feComponentTransfer in="darkMask" result="darkMask2">
+        <feFuncA type="table" tableValues="0 0 0.34 0.78 1"/>
+      </feComponentTransfer>
+      <feFlood flood-color="#9a7a5c" result="darkColor"/>
+      <feComposite in="darkColor" in2="darkMask2" operator="in" result="darkLayer"/>
+      <feBlend in="inkB" in2="darkLayer" mode="multiply" result="inkC"/>
+
+      <!-- ④ 宣纸留白：整体轻微提亮回暖，保留空气感 -->
+      <feColorMatrix in="inkC" type="matrix"
+        values="1.015 0 0 0 0.035
+                0 1.010 0 0 0.028
+                0 0 0.985 0 0.016
+                0 0 0 1 0"/>
+    </filter>
+  </svg>
   <div class="app-shell" id="app-shell">
     <header class="topbar">
       <a class="brand" href="./" aria-label="回到首页">
@@ -68,6 +120,7 @@
       <section class="map-shell" id="map-shell" data-risk-level="unknown" aria-label="出行风险路线地图">
         <div id="map" class="map"></div>
         <canvas id="particle-canvas" class="particle-canvas" aria-hidden="true"></canvas>
+        <canvas id="silk-canvas" class="silk-canvas" aria-hidden="true"></canvas>
         <div class="map-vignette" aria-hidden="true"></div>
         <div class="map-grid" aria-hidden="true"></div>
         <div class="map-legend" aria-label="地图图例">
@@ -183,18 +236,19 @@
   </div>
 
   <noscript>此页面需要 JavaScript 才能运行水墨星云粒子与风险计算。</noscript>
-  <script src="vendor/maplibre-gl.js?v=48"></script>
-  <script src="data/config.js?v=48"></script>
-  <script src="data/routes.js?v=48"></script>
-  <script src="js/risk.js?v=48"></script>
-  <script src="js/flow-field.js?v=48"></script>
-  <script src="js/map.js?v=48"></script>
-  <script src="js/amap-map.js?v=48"></script>
-  <script src="js/particles.js?v=48"></script>
-  <script src="js/warm-ui.js?v=48"></script>
-  <script src="js/location-search.js?v=48"></script>
-  <script src="js/ui.js?v=48"></script>
-  <script src="js/app.js?v=48"></script>
+  <script src="vendor/maplibre-gl.js?v=53"></script>
+  <script src="data/config.js?v=53"></script>
+  <script src="data/routes.js?v=53"></script>
+  <script src="js/risk.js?v=53"></script>
+  <script src="js/flow-field.js?v=53"></script>
+  <script src="js/map.js?v=53"></script>
+  <script src="js/amap-map.js?v=53"></script>
+  <script src="js/particles.js?v=53"></script>
+  <script src="js/silk-route.js?v=53"></script>
+  <script src="js/warm-ui.js?v=53"></script>
+  <script src="js/location-search.js?v=53"></script>
+  <script src="js/ui.js?v=53"></script>
+  <script src="js/app.js?v=53"></script>
 </body>
 </html>
 

@@ -1,4 +1,4 @@
-﻿/* global window, document, AMap */
+/* global window, document, AMap */
 (function (global) {
   'use strict';
 
@@ -280,23 +280,27 @@
 
     addRouteLayer() {
       if (!this.map) return;
+      /* V4: the route is drawn by js/silk-route.js (18 semi-transparent ink
+         strands). These two polylines are kept only as the faintest wet-ink
+         bed underneath, so the route stays readable if the silk canvas ever
+         fails - the old 4px solid 0.9-opacity navigation line is gone. */
       this.routeHalo = new AMap.Polyline({
         path: [],
-        strokeColor: 'rgba(112,196,194,0.24)',
-        strokeWeight: 12,
-        strokeOpacity: 0.45,
+        strokeColor: '#268f6f',
+        strokeWeight: 16,
+        strokeOpacity: 0.11,
         lineJoin: 'round',
         lineCap: 'round',
         zIndex: 80
       });
       this.routePolyline = new AMap.Polyline({
         path: [],
-        strokeColor: '#267f86',
-        strokeWeight: 4,
-        strokeOpacity: 0.9,
+        strokeColor: '#268f6f',
+        strokeWeight: 1.1,
+        strokeOpacity: 0.26,
         lineJoin: 'round',
         lineCap: 'round',
-        showDir: true,
+        showDir: false,
         zIndex: 81
       });
       this.map.add([this.routeHalo, this.routePolyline]);
@@ -328,10 +332,17 @@
     setRisk(risk) {
       this.risk = clamp(Number(risk) || 0, 0, 100);
       const color = global.RiskTideMapUtils ? global.RiskTideMapUtils.riskColor(this.risk) : [38, 127, 134];
-      const rgba = 'rgba(' + color[0] + ',' + color[1] + ',' + color[2] + ',0.9)';
-      const halo = 'rgba(' + color[0] + ',' + color[1] + ',' + color[2] + ',' + (this.risk > 70 ? 0.26 : 0.15) + ')';
-      if (this.routePolyline) this.routePolyline.setOptions({ strokeColor: rgba, strokeOpacity: 0.9, strokeWeight: this.risk > 70 ? 5 : 4 });
-      if (this.routeHalo) this.routeHalo.setOptions({ strokeColor: halo, strokeWeight: this.risk > 70 ? 18 : 12 });
+      /* AMap only accepts a hex colour for strokeColor; opacity is its own
+         option. Passing rgba() here silently breaks the polyline. */
+      const hex = '#' + [color[0], color[1], color[2]].map(function (channel) {
+        return ('0' + Math.round(channel).toString(16)).slice(-2);
+      }).join('');
+      if (this.routePolyline) {
+        this.routePolyline.setOptions({ strokeColor: hex, strokeOpacity: 0.26, strokeWeight: this.risk > 70 ? 1.4 : 1.1 });
+      }
+      if (this.routeHalo) {
+        this.routeHalo.setOptions({ strokeColor: hex, strokeOpacity: this.risk > 70 ? 0.16 : 0.11, strokeWeight: this.risk > 70 ? 20 : 16 });
+      }
     }
 
     getScreenPath(coordinates, coordinateSystem) {
