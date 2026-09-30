@@ -1,4 +1,4 @@
-﻿/* global window, document */
+/* global window, document */
 (function (global) {
   'use strict';
 
@@ -108,10 +108,10 @@
               source: 'osm',
               paint: {
                 'raster-opacity': Math.max(0.58, mapConfig.rasterOpacity),
-                'raster-saturation': -0.72,
-                'raster-contrast': 0.62,
-                'raster-brightness-min': 0.01,
-                'raster-brightness-max': 0.62
+                'raster-saturation': -0.22,
+                'raster-contrast': 0.38,
+                'raster-brightness-min': 0.10,
+                'raster-brightness-max': 0.84
               }
             }
           ]
@@ -206,7 +206,7 @@
           layout: { 'line-cap': 'round', 'line-join': 'round' },
           paint: {
             'line-color': cssRgb(config.colors.safeBright, 0.13),
-            'line-width': ['interpolate', ['linear'], ['zoom'], 10, 8, 15, 18],
+            'line-width': ['interpolate', ['linear'], ['zoom'], 10, 10, 15, 22],
             'line-blur': 3
           }
         });
@@ -220,8 +220,8 @@
           layout: { 'line-cap': 'round', 'line-join': 'round' },
           paint: {
             'line-color': cssRgb(config.colors.safe, 0.78),
-            'line-width': ['interpolate', ['linear'], ['zoom'], 10, 2.2, 15, 4.8],
-            'line-opacity': 0.84,
+            'line-width': ['interpolate', ['linear'], ['zoom'], 10, 2.6, 15, 5.6],
+            'line-opacity': 0.34,
             'line-dasharray': [1.2, 1.8]
           }
         });
@@ -235,8 +235,8 @@
           layout: { 'line-cap': 'butt', 'line-join': 'round' },
           paint: {
             'line-color': cssRgb(config.colors.coolWhite, 0.7),
-            'line-width': ['interpolate', ['linear'], ['zoom'], 10, 1, 15, 2.3],
-            'line-opacity': 0.3,
+            'line-width': ['interpolate', ['linear'], ['zoom'], 10, 1.3, 15, 3.0],
+            'line-opacity': 0.24,
             'line-dasharray': [0.3, 3.2]
           }
         });
@@ -339,8 +339,8 @@
       this.risk = risk;
       if (!this.map || !this.ready) return;
       const color = riskColor(risk);
-      const opacity = 0.48 + Math.max(0, (risk - 50) / 50) * 0.12;
-      const rasterOpacity = Math.max(0.5, config.map.rasterOpacity - Math.max(0, risk - 58) / 42 * 0.18);
+      const opacity = 0.28 + Math.max(0, (risk - 50) / 50) * 0.10;
+      const rasterOpacity = Math.max(0.48, config.map.rasterOpacity - Math.max(0, risk - 58) / 42 * 0.10);
 
       if (this.map.getLayer('risk-route-core')) {
         this.map.setPaintProperty('risk-route-core', 'line-color', cssRgb(color, 0.84));
@@ -354,7 +354,7 @@
       }
       if (this.map.getLayer('osm-raster')) {
         this.map.setPaintProperty('osm-raster', 'raster-opacity', rasterOpacity);
-        this.map.setPaintProperty('osm-raster', 'raster-contrast', 0.5 + risk / 100 * 0.32);
+        this.map.setPaintProperty('osm-raster', 'raster-contrast', 0.34 + risk / 100 * 0.12);
       }
 
       if (this.canvasStage) {

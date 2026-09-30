@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#efe8dc">
   <meta name="description" content="风险潮汐：把出行时间压力变成可见的水墨粒子流。">
   <title>风险潮汐 · 全国时间风险地图</title>
-  <link rel="stylesheet" href="vendor/maplibre-gl.css?v=48">
-  <link rel="stylesheet" href="styles.css?v=48">
+  <link rel="stylesheet" href="vendor/maplibre-gl.css?v=51">
+  <link rel="stylesheet" href="styles.css?v=51">
 </head>
 <body>
   <div class="app-shell" id="app-shell">
@@ -70,6 +70,8 @@
         <canvas id="particle-canvas" class="particle-canvas" aria-hidden="true"></canvas>
         <div class="map-vignette" aria-hidden="true"></div>
         <div class="map-grid" aria-hidden="true"></div>
+        <canvas id="weather-canvas" class="weather-canvas" aria-hidden="true"></canvas>
+        <div class="weather-veil" aria-hidden="true"></div>
         <div class="map-legend" aria-label="地图图例">
           <span><i class="legend-dot safe"></i>起点</span>
           <span><i class="legend-dot station"></i>终点 / 风险源</span>
@@ -136,6 +138,28 @@
 
         <section class="panel-section results-section">
           <div class="section-label"><span>03</span><strong>风险读数</strong></div>
+          <div class="weather-strip" id="weather-strip" data-state="loading" aria-live="polite">
+            <div class="weather-now">
+              <span class="weather-glyph" id="weather-glyph" aria-hidden="true"></span>
+              <div class="weather-now-copy">
+                <strong id="weather-now">天气读取中</strong>
+                <small id="weather-now-label">正在接入实时天气…</small>
+              </div>
+            </div>
+            <div class="weather-split">
+              <div class="weather-cell">
+                <span>出发时段</span>
+                <strong id="weather-departure">--:--</strong>
+                <small id="weather-departure-label">等待出发时段预报</small>
+              </div>
+              <div class="weather-cell">
+                <span>天气加时</span>
+                <strong id="weather-impact">±0 分钟</strong>
+                <small id="weather-impact-label">尚未计入</small>
+              </div>
+            </div>
+            <p class="weather-note" id="weather-note">数据来源：Open-Meteo 实时观测与逐小时预报。</p>
+          </div>
           <div class="risk-hero">
             <div>
               <span class="result-label">风险指数</span>
@@ -177,26 +201,29 @@
 
     <footer class="footer">
       <span>时间风险模型：缓冲 = 可用时间 − 路线时间 − 安全预留；风险只由计划时间差计算。</span>
-      <span>地图数据：高德地图或 © OpenStreetMap contributors · 风险模型不接入实时天气接口</span>
+      <span>地图数据：高德地图或 © OpenStreetMap contributors · 天气：Open-Meteo 实时观测与逐小时预报，出发时段加时已计入风险</span>
       <span id="metrics" class="metrics">正在探测设备性能…</span>
     </footer>
   </div>
 
   <noscript>此页面需要 JavaScript 才能运行水墨星云粒子与风险计算。</noscript>
-  <script src="vendor/maplibre-gl.js?v=48"></script>
-  <script src="data/config.js?v=48"></script>
-  <script src="data/routes.js?v=48"></script>
-  <script src="js/risk.js?v=48"></script>
-  <script src="js/flow-field.js?v=48"></script>
-  <script src="js/map.js?v=48"></script>
-  <script src="js/amap-map.js?v=48"></script>
-  <script src="js/particles.js?v=48"></script>
-  <script src="js/warm-ui.js?v=48"></script>
-  <script src="js/location-search.js?v=48"></script>
-  <script src="js/ui.js?v=48"></script>
-  <script src="js/app.js?v=48"></script>
+  <script src="vendor/maplibre-gl.js?v=51"></script>
+  <script src="data/config.js?v=51"></script>
+  <script src="data/routes.js?v=51"></script>
+  <script src="js/risk.js?v=51"></script>
+  <script src="js/flow-field.js?v=51"></script>
+  <script src="js/map.js?v=51"></script>
+  <script src="js/amap-map.js?v=51"></script>
+  <script src="js/particles.js?v=51"></script>
+  <script src="js/warm-ui.js?v=51"></script>
+  <script src="js/location-search.js?v=51"></script>
+  <script src="js/weather.js?v=51"></script>
+  <script src="js/weather-visual.js?v=51"></script>
+  <script src="js/ui.js?v=51"></script>
+  <script src="js/app.js?v=51"></script>
 </body>
 </html>
+
 
 
 

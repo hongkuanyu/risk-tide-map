@@ -1,4 +1,4 @@
-/* global window, document */
+﻿/* global window, document */
 (function (global) {
   'use strict';
 
@@ -30,16 +30,6 @@
     const particleCanvas = document.getElementById('particle-canvas');
     const particles = new global.RiskTideParticles(particleCanvas, mapController);
     const ui = new global.RiskTideUI(global.routes);
-    const weatherClient = (config.weather && config.weather.enabled && global.RiskTideWeather)
-      ? new global.RiskTideWeather.Client(config.weather)
-      : null;
-    const weatherVisual = (config.weather && config.weather.enabled && config.weather.visual
-      && config.weather.visual.enabled !== false && global.RiskTideWeatherVisual)
-      ? new global.RiskTideWeatherVisual(
-        document.getElementById('weather-canvas'),
-        document.getElementById('map-shell')
-      )
-      : null;
     let showcaseActive = false;
     let showcaseStart = 0;
     let showcaseFrame = 0;
@@ -61,7 +51,6 @@
         departureTime: state.departureTime,
         routeMinutes: state.routeMinutes,
         stationMinutes: state.stationMinutes,
-        weatherMinutes: ui.getWeatherMinutes(),
         safeBufferMinutes: config.risk.safeBufferMinutes
       });
       latestResult = result;
@@ -81,80 +70,10 @@
       if (showcaseActive) {
         ui.setShowcase(true, 0);
       }
-      scheduleWeather(false);
       return result;
     }
 
     ui.onChange = applyState;
-
-    /* ---- real-time weather -------------------------------------------
-       Weather is sampled at the midpoint of the current origin/destination
-       pair and re-scored whenever the planned departure time moves. */
-    let weatherKey = '';
-    let weatherTimer = 0;
-
-    function routeMidpoint() {
-      const endpoints = (mapController.getEndpoints && mapController.getEndpoints()) || config.endpoints || {};
-      const a = endpoints.campus;
-      const b = endpoints.station;
-      const pick = function (point) {
-        if (!point || !point.coordinate) return null;
-        const lng = Number(point.coordinate[0]);
-        const lat = Number(point.coordinate[1]);
-        return Number.isFinite(lng) && Number.isFinite(lat) ? [lng, lat] : null;
-      };
-      const from = pick(a);
-      const to = pick(b);
-      if (from && to) return [(from[0] + to[0]) / 2, (from[1] + to[1]) / 2];
-      return from || to;
-    }
-
-    function weatherPlaceLabel() {
-      const endpoints = (mapController.getEndpoints && mapController.getEndpoints()) || config.endpoints || {};
-      const a = endpoints.campus;
-      const b = endpoints.station;
-      if (a && b) return (a.shortName || a.name) + ' → ' + (b.shortName || b.name);
-      return (config.weather && config.weather.placeFallback) || '路线中点';
-    }
-
-    /* One funnel for weather arrival: the map layer and the panel always agree. */
-    function applyWeatherInfo(info) {
-      if (weatherVisual) weatherVisual.set(info);
-      ui.setWeather(info);
-    }
-
-    function refreshWeather() {
-      if (!weatherClient) return Promise.resolve(null);
-      const point = routeMidpoint();
-      if (!point) {
-        applyWeatherInfo(global.RiskTideWeather.unavailable('缺少起终点坐标'));
-        return Promise.resolve(null);
-      }
-      const state = ui.getState();
-      return weatherClient.get({
-        latitude: point[1],
-        longitude: point[0],
-        targetTime: state.departureTime,
-        place: weatherPlaceLabel()
-      }).then(function (info) {
-        applyWeatherInfo(info);
-        return info;
-      }).catch(function (error) {
-        applyWeatherInfo(global.RiskTideWeather.unavailable(error));
-        return null;
-      });
-    }
-
-    function scheduleWeather(force) {
-      if (!weatherClient) return;
-      const point = routeMidpoint();
-      const state = ui.getState();
-      const key = (point ? point[0].toFixed(4) + ',' + point[1].toFixed(4) : 'none') + '|' + (state.departureTime || '');
-      if (!force && key === weatherKey) return;
-      weatherKey = key;
-      global.clearTimeout(weatherTimer);
-      weatherTimer = global.setTimeout(refreshWeather, force ? 0 : 350);
-    }
 
     mapController.init({
       container: document.getElementById('map'),
@@ -171,7 +90,6 @@
       onStatus: function (status) {
         if (status.state === 'ready') {
           particles.resize();
-          if (weatherVisual) weatherVisual.resize();
           particles.routeDirty = true;
           ui.setStatus('地图底图已加载 · 路线规划同步中', 'normal');
         } else {
@@ -194,7 +112,6 @@
     });
 
     particles.start();
-    if (weatherVisual) weatherVisual.start();
     // Risk Tide V2 pointer layer: hover wake, click ripple, route resonance.
     // All three are visual-only and reuse the existing animation loop.
     particles.bindPointer(document.getElementById('map-shell'));
@@ -251,7 +168,6 @@
           }
           if (city) updates.city = city;
           mapController.setEndpoints(updates);
-          scheduleWeather(true);
           ui.refreshRoutes();
           lastRouteKey = null;
           if (mapController.replanRoutes) {
@@ -299,8 +215,6 @@
     function handleVisibility() {
       const visible = !document.hidden;
       particles.setVisible(visible);
-      if (weatherVisual) weatherVisual.setVisible(visible);
-      if (visible) scheduleWeather(true);
       if (!visible) {
         global.cancelAnimationFrame(showcaseFrame);
       } else if (showcaseActive) {
@@ -317,7 +231,6 @@
       resizeTimer = global.setTimeout(function () {
         mapController.resize();
         particles.resize();
-        if (weatherVisual) weatherVisual.resize();
         particles.routeDirty = true;
       }, 120);
     }, { passive: true });
@@ -326,23 +239,10 @@
       if (!showcaseActive) ui.updateMetrics(particles.getMetrics());
     }, 1800);
 
-    if (weatherClient) {
-      const refreshMinutes = Math.max(5, Number(config.weather.refreshMinutes) || 15);
-      global.setInterval(function () {
-        if (document.hidden) return;
-        scheduleWeather(true);
-      }, refreshMinutes * 60000);
-      scheduleWeather(true);
-    }
-
     global.RiskTideApp = {
       map: mapController,
       particles: particles,
       ui: ui,
-      weather: weatherClient,
-      weatherVisual: weatherVisual,
-      weatherInfo: function () { return ui.getWeather(); },
-      refreshWeather: refreshWeather,
       result: function () { return latestResult; }
     };
   }

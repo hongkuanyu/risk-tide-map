@@ -1,4 +1,4 @@
-/* global window, document */
+﻿/* global window, document */
 (function (global) {
   'use strict';
 
@@ -10,18 +10,10 @@
     return Number.isFinite(number) && number > 0 ? number : null;
   }
 
-  /* Keeps "missing" distinct from a real 0 (0 C, 0% humidity, 0% rain). */
-  function finiteOrNull(value) {
-    if (value === null || value === undefined || value === '') return null;
-    const number = Number(value);
-    return Number.isFinite(number) ? number : null;
-  }
-
   class RiskTideUI {
     constructor(routeMap) {
       this.routeMap = routeMap;
       this.onChange = function () {};
-      this.weatherInfo = null;
       this.state = {
         mode: null,
         trainTime: '18:00',
@@ -33,7 +25,6 @@
       };
       this.cacheElements();
       this.bindEvents();
-      this.renderWeather();
       this.update();
     }
 
@@ -66,16 +57,7 @@
         showcaseProgress: document.getElementById('showcase-progress'),
         statusLine: document.getElementById('status-line'),
         metrics: document.getElementById('metrics'),
-        mapShell: document.getElementById('map-shell'),
-        weatherStrip: document.getElementById('weather-strip'),
-        weatherGlyph: document.getElementById('weather-glyph'),
-        weatherNow: document.getElementById('weather-now'),
-        weatherNowLabel: document.getElementById('weather-now-label'),
-        weatherDeparture: document.getElementById('weather-departure'),
-        weatherDepartureLabel: document.getElementById('weather-departure-label'),
-        weatherImpact: document.getElementById('weather-impact'),
-        weatherImpactLabel: document.getElementById('weather-impact-label'),
-        weatherNote: document.getElementById('weather-note')
+        mapShell: document.getElementById('map-shell')
       };
     }
 
@@ -253,114 +235,6 @@
       }
     }
 
-    /* ---- real-time weather strip ------------------------------------- */
-    getWeather() { return this.weatherInfo; }
-
-    getWeatherMinutes() {
-      const info = this.weatherInfo;
-      if (!info || !info.ok || !info.impact) return 0;
-      const minutes = Number(info.impact.extraMinutes);
-      return Number.isFinite(minutes) && minutes > 0 ? Math.round(minutes) : 0;
-    }
-
-    setWeather(info) {
-      this.weatherInfo = info || null;
-      this.renderWeather();
-      this.update();
-      this.onChange(this.getState());
-    }
-
-    renderWeather() {
-      const el = this.elements;
-      if (!el.weatherStrip) return;
-      const info = this.weatherInfo;
-      const weather = global.RiskTideWeather;
-
-      const setGlyph = function (name) {
-        if (!el.weatherGlyph) return;
-        el.weatherGlyph.innerHTML = weather && weather.glyphMarkup ? weather.glyphMarkup(name) : '';
-      };
-      const text = function (node, value) {
-        if (node) node.textContent = value;
-      };
-
-      if (!info) {
-        el.weatherStrip.dataset.state = 'loading';
-        setGlyph('cloud');
-        text(el.weatherNow, '天气读取中');
-        text(el.weatherNowLabel, '正在接入实时天气…');
-        text(el.weatherDeparture, '--:--');
-        text(el.weatherDepartureLabel, '等待出发时段预报');
-        text(el.weatherImpact, '±0 分钟');
-        text(el.weatherImpactLabel, '尚未计入');
-        text(el.weatherNote, '数据来源：Open-Meteo 实时观测与逐小时预报。');
-        return;
-      }
-
-      if (!info.ok) {
-        el.weatherStrip.dataset.state = 'unavailable';
-        setGlyph('unknown');
-        text(el.weatherNow, '天气暂不可用');
-        text(el.weatherNowLabel, '实时接口未返回数据');
-        text(el.weatherDeparture, info.targetTime || '--:--');
-        text(el.weatherDepartureLabel, '出发时段预报缺失');
-        text(el.weatherImpact, '±0 分钟');
-        text(el.weatherImpactLabel, '按纯时间模型计算');
-        text(el.weatherNote, '天气接口未能返回数据，风险只由时间差计算，不额外加时。');
-        return;
-      }
-
-      const current = info.current || {};
-      const departure = info.departure || current || {};
-      const impact = info.impact || { extraMinutes: 0, reasons: [] };
-      const extra = Number(impact.extraMinutes) || 0;
-
-      el.weatherStrip.dataset.state = extra >= 8 ? 'alert' : extra > 0 ? 'watch' : 'active';
-      setGlyph(current.glyph || departure.glyph || 'cloud');
-
-      const temperature = finiteOrNull(current.temperature);
-      const feels = finiteOrNull(current.feelsLike);
-      const humidity = finiteOrNull(current.humidity);
-      text(el.weatherNow, (temperature !== null ? Math.round(temperature) + '°' : '--') + ' · ' + (current.label || '天气未知'));
-
-      const nowBits = [];
-      if (feels !== null) nowBits.push('体感 ' + Math.round(feels) + '°');
-      if (humidity !== null) nowBits.push('湿度 ' + Math.round(humidity) + '%');
-      const stamp = this.weatherTimeLabel(info.fetchedAt);
-      if (stamp) nowBits.push(stamp);
-      text(el.weatherNowLabel, nowBits.join(' · ') || '实时观测');
-
-      text(el.weatherDeparture, info.targetTime || departure.time || '--:--');
-      const depBits = [];
-      const depTemp = finiteOrNull(departure.temperature);
-      if (depTemp !== null) depBits.push(Math.round(depTemp) + '°');
-      depBits.push(departure.label || '未知');
-      const probability = finiteOrNull(departure.precipitationProbability);
-      if (probability !== null) depBits.push('降水 ' + Math.round(probability) + '%');
-      text(el.weatherDepartureLabel, depBits.join(' · '));
-
-      text(el.weatherImpact, extra > 0 ? '+' + extra + ' 分钟' : '±0 分钟');
-      text(el.weatherImpactLabel, extra > 0 ? '已计入路线时间' : '未计入风险');
-      text(el.weatherNote, this.weatherNoteText(info, impact));
-    }
-
-    weatherTimeLabel(timestamp) {
-      if (!Number.isFinite(Number(timestamp))) return '';
-      const date = new Date(Number(timestamp));
-      return String(date.getHours()).padStart(2, '0') + ':' + String(date.getMinutes()).padStart(2, '0') + ' 更新';
-    }
-
-    weatherNoteText(info, impact) {
-      const source = (info.provider || 'Open-Meteo') + ' 实时观测与逐小时预报';
-      const suffix = info.stale ? '（网络不可用，展示缓存数据）' : '';
-      const minutes = Number(impact.extraMinutes) || 0;
-      if (minutes > 0) {
-        const reasons = (impact.reasons || []).join('、');
-        return source + ' · ' + (reasons ? reasons + '，' : '') + '已把 +' + minutes + ' 分钟计入路线时间。' + suffix;
-      }
-      return source + ' · 出发时段无明显天气加时。' + suffix;
-    }
-
     updateMetrics(metrics) {
       const label = metrics.mobile ? '移动端' : '桌面端';
       const quality = Math.round(metrics.quality * 100);
@@ -374,7 +248,6 @@
         departureTime: this.state.departureTime,
         routeMinutes: this.state.routeMinutes,
         stationMinutes: this.state.stationMinutes,
-        weatherMinutes: this.getWeatherMinutes(),
         safeBufferMinutes: config.risk.safeBufferMinutes
       });
 

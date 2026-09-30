@@ -1,4 +1,4 @@
-/* global window */
+﻿/* global window */
 (function (global) {
   'use strict';
 
@@ -69,11 +69,6 @@
     const departureTime = input.departureTime || '16:00';
     const routeMinutes = Number(input.routeMinutes);
     const stationMinutes = Number(input.stationMinutes);
-    /* Live weather only ever adds minutes. Missing / unusable values fall back
-       to the pure time-buffer model, so the page still works offline. */
-    const weatherMinutes = Number.isFinite(Number(input.weatherMinutes)) && Number(input.weatherMinutes) > 0
-      ? Math.round(Number(input.weatherMinutes))
-      : 0;
     const safeBufferMinutes = Number.isFinite(Number(input.safeBufferMinutes))
       ? Number(input.safeBufferMinutes)
       : 60;
@@ -84,9 +79,6 @@
         trainTime: trainTime,
         departureTime: departureTime,
         availableMinutes: untilTime(departureTime, trainTime),
-        routeMinutes: Number.isFinite(routeMinutes) ? routeMinutes : null,
-        stationMinutes: Number.isFinite(stationMinutes) ? stationMinutes : null,
-        weatherMinutes: weatherMinutes,
         requiredMinutes: null,
         bufferMinutes: null,
         risk: null,
@@ -97,19 +89,16 @@
     }
 
     const availableMinutes = untilTime(departureTime, trainTime);
-    const requiredMinutes = routeMinutes + stationMinutes + weatherMinutes;
+    const requiredMinutes = routeMinutes + stationMinutes;
     const bufferMinutes = availableMinutes - requiredMinutes;
     const risk = calculateRisk(bufferMinutes, safeBufferMinutes);
-    const latestDepartureTime = addMinutes(trainTime, -(routeMinutes + stationMinutes + weatherMinutes + safeBufferMinutes));
+    const latestDepartureTime = addMinutes(trainTime, -(routeMinutes + stationMinutes + safeBufferMinutes));
 
     return {
       valid: true,
       trainTime: trainTime,
       departureTime: departureTime,
       availableMinutes: availableMinutes,
-      routeMinutes: routeMinutes,
-      stationMinutes: stationMinutes,
-      weatherMinutes: weatherMinutes,
       requiredMinutes: requiredMinutes,
       bufferMinutes: bufferMinutes,
       risk: risk,
