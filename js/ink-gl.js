@@ -42,7 +42,10 @@
     float p2 = 0.5 + 0.5 * sin(6.28318 * (along * 2.37 - uTime * uPulseHz * 0.61));
     float feed = uBase + uPulse * p1 * p2;
     float add = mask * feed * uDt;
-    float warm = clamp(add * uWarmBias, 0.0, 1.0);
+    /* warm fraction is a RATIO, not a quantity: deriving it from dd made
+       it ~0.005, so the composite always resolved to the warm tint and the
+       risk colour never showed. */
+    float warm = clamp(uWarmBias * p1, 0.0, 1.0);
     p.r = p.r * p.a + warm * add;
     p.a = p.a + add;
     if (p.a > 0.0001) p.r /= p.a;
@@ -80,7 +83,7 @@
     vec4 p = texture(uPig, vUv);
     float d = clamp(p.a * uGain, 0.0, 1.0);
     float a = pow(d, uGamma) * uAlpha;       // dense core -> translucent body -> soft wet edge
-    vec3 col = mix(uWarm, uCool, clamp(p.r, 0.0, 1.0));
+    vec3 col = mix(uCool, uWarm, clamp(p.r, 0.0, 1.0));   // p.r = warm fraction
     outColor = vec4(col, a);
   }`;
 
