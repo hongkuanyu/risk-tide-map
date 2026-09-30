@@ -20,7 +20,7 @@
   const config = global.RiskTideConfig;
 
   const VERT = `#version 300 es
-  in vec2 aPos;
+  layout(location = 0) in vec2 aPos;   // fixed slot: attribute locations are per-program
   out vec2 vUv;
   void main(){ vUv = aPos * 0.5 + 0.5; gl_Position = vec4(aPos, 0.0, 1.0); }`;
 
@@ -46,10 +46,11 @@
   precision highp float;
   in vec2 vUv; out vec4 outColor;
   uniform sampler2D uPig; uniform sampler2D uVel;
-  uniform float uDt; uniform float uDecay; uniform vec2 uTexel;
+  uniform vec2 uStep; uniform float uDecay;
   void main(){
     vec2 vel = texture(uVel, vUv).xy * 2.0 - 1.0;   // decode
-    vec2 back = vUv - vel * uDt * uTexel * 64.0;    // back-trace
+    /* one step = speed*dt in UV units, so the displacement is real pixels */
+    vec2 back = vUv - vel * uStep;                  // back-trace
     vec4 p = texture(uPig, back);
     p.a *= uDecay;
     outColor = p;
@@ -233,30 +234,35 @@
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     }
 
+    /* The pass callbacks run inside gl callbacks, so never rely on `this`
+       there: capture the renderer instance explicitly. (The display pass was
+       missing its binding entirely, which is what threw
+       "Cannot read properties of undefined (reading 'ping')".) */
     step(dt) {
+      const self = this;
       const gl = this.gl;
       const u = function (p, n) { return gl.getUniformLocation(p, n); };
       // inject
       this.pass(this.progInject, this.pong, function (p) {
-        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.ping.tex);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, self.ping.tex);
         gl.uniform1i(u(p, 'uPig'), 0);
-        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, this.texVel);
+        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, self.texVel);
         gl.uniform1i(u(p, 'uVel'), 1);
-        gl.uniform1f(u(p, 'uInject'), (this.config.injection || 1.0) * dt * 3.0);
-        gl.uniform1f(u(p, 'uWarmBias'), this.config.warmBias || 0.24);
-      }.bind(this));
-      const tmp = this.ping; this.ping = this.pong; this.pong = tmp;
+        gl.uniform1f(u(p, 'uInject'), (self.config.injection || 1.0) * dt * 3.0);
+        gl.uniform1f(u(p, 'uWarmBias'), self.config.warmBias || 0.24);
+      });
+      const tmp = self.ping; self.ping = self.pong; self.pong = tmp;
       // advect
       this.pass(this.progAdvect, this.pong, function (p) {
-        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.ping.tex);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, self.ping.tex);
         gl.uniform1i(u(p, 'uPig'), 0);
-        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, this.texVel);
+        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, self.texVel);
         gl.uniform1i(u(p, 'uVel'), 1);
-        gl.uniform1f(u(p, 'uDt'), dt * (this.config.speed || 60) / 60);
-        gl.uniform1f(u(p, 'uDecay'), this.config.decay || 0.99);
-        gl.uniform2f(u(p, 'uTexel'), 1 / this.simW, 1 / this.simH);
-      }.bind(this));
-      const tmp2 = this.ping; this.ping = this.pong; this.pong = tmp2;
+        const spd = (self.config.speed || 60) * dt;
+        gl.uniform2f(u(p, 'uStep'), spd / self.width, spd / self.height);
+        gl.uniform1f(u(p, 'uDecay'), self.config.decay || 0.99);
+      });
+      const tmp2 = self.ping; self.ping = self.pong; self.pong = tmp2;
     }
 
     render() {
@@ -278,9 +284,10 @@
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
       const m = this.map && this.map.getMoving && this.map.getMoving();
+      const self = this;
       this.pass(this.progDisplay, null, function (p) {
         const u = function (n) { return gl.getUniformLocation(p, n); };
-        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.ping.tex);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, self.ping.tex);
         gl.uniform1i(u('uPig'), 0);
         gl.uniform3f(u('uCool'), cool[0] / 255, cool[1] / 255, cool[2] / 255);
         gl.uniform3f(u('uWarm'), warm[0] / 255, warm[1] / 255, warm[2] / 255);
