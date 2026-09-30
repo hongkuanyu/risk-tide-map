@@ -13,29 +13,37 @@
     return a + (b - a) * t;
   }
 
-  function sampleRiskColor(risk, out) {
-    const colors = config.colors;
-    const value = clamp(risk, 0, 100);
-    let a;
-    let b;
+  /* Possibility channel: one tone per still-open branch. As a branch closes it
+     first desaturates through grey, then gets absorbed into the surviving
+     colour - so the eye reads "several futures" collapsing into "one future",
+     never a mix that simply turns muddy. */
+  function resolveBranchTone(tone, closeProgress, spec, out) {
+    const greyAt = spec.greyAt;
+    const grey = spec.grey;
+    const absorb = spec.absorb;
+    let from;
+    let to;
     let t;
-    if (value <= 30) {
-      a = colors.safe;
-      b = colors.safeBright;
-      t = value / 30 * 0.4;
-    } else if (value <= 70) {
-      a = colors.safe;
-      b = colors.gold;
-      t = (value - 30) / 40;
+    if (closeProgress <= greyAt) {
+      from = tone;
+      to = grey;
+      t = greyAt > 0 ? closeProgress / greyAt : 1;
     } else {
-      a = colors.gold;
-      b = colors.danger;
-      t = (value - 70) / 30;
+      from = grey;
+      to = absorb;
+      t = (closeProgress - greyAt) / Math.max(0.0001, 1 - greyAt);
     }
-    out.r = Math.round(lerp(a[0], b[0], t));
-    out.g = Math.round(lerp(a[1], b[1], t));
-    out.b = Math.round(lerp(a[2], b[2], t));
+    out.r = Math.round(lerp(from[0], to[0], t));
+    out.g = Math.round(lerp(from[1], to[1], t));
+    out.b = Math.round(lerp(from[2], to[2], t));
     return out;
+  }
+
+  /* Reads a [slack, taut] pair and interpolates by tension. */
+  function pairAt(pair, t, fallbackSlack, fallbackTaut) {
+    const a = (pair && pair.length === 2) ? pair[0] : fallbackSlack;
+    const b = (pair && pair.length === 2) ? pair[1] : fallbackTaut;
+    return lerp(a, b, t);
   }
 
   function detectProfile() {
@@ -71,9 +79,33 @@
       this.activeCount = 0;
       this.risk = 0;
       this.riskTarget = 0;
-      this.riskColor = { r: config.colors.safe[0], g: config.colors.safe[1], b: config.colors.safe[2] };
-      this.targetColor = { r: this.riskColor.r, g: this.riskColor.g, b: this.riskColor.b };
-      this.route = null;
+      /* --- Possibility: the only colour channel ------------------------- */
+      const poss = (config.tide && config.tide.possibility) || {};
+      this.possibility = {
+        count: poss.count || 4,
+        tones: poss.tones || [[30, 75, 87]],
+        absorb: poss.absorb || [46, 143, 168],
+        grey: poss.grey || [122, 126, 128],
+        greyAt: poss.greyAt !== undefined ? poss.greyAt : 0.45,
+        closeDuration: poss.closeDuration || 0.6,
+        stagger: poss.staggerPerBranch !== undefined ? poss.staggerPerBranch : 0.1
+      };
+      const pcount = this.possibility.count;
+      this.branchClose = new Float32Array(pcount);      // 0 open .. 1 absorbed
+      this.branchRGB = new Array(pcount);
+      for (let b = 0; b < pcount; b += 1) {
+        this.branchRGB[b] = {
+          r: this.possibility.tones[b][0],
+          g: this.possibility.tones[b][1],
+          b: this.possibility.tones[b][2]
+        };
+      }
+      this.openCount = pcount;
+      this.waterColor = {
+        r: this.possibility.absorb[0],
+        g: this.possibility.absorb[1],
+        b: this.possibility.absorb[2]
+      };      this.route = null;
       this.pendingRoute = null;
       this.routeChangeProgress = 1;
       this.running = false;
@@ -85,7 +117,7 @@
       this.arrivalPulse = 0;
       // --- Risk Tide V2 interaction state -------------------------------
       this.tideConfig = (config.tide) || {};
-      this.riskTurbulence = 0;
+      this.tension = 0;
       this.pointerX = 0;
       this.pointerY = 0;
       this.pointerActive = false;
@@ -117,9 +149,6 @@
       this.pressing = false;
       this.pressX = 0;
       this.pressY = 0;
-      this.stormEnergy = 0;
-      this.stormCooldown = 1.2;
-      this.stormSeed = Math.random() * 1000;
       this.width = 1;
       this.height = 1;
       this.dpr = 1;
@@ -161,6 +190,11 @@
         layer: layer,
         /* ---- Flow personality: stable for the particle's whole life ---- */
         flowSeed: Math.random() * 1000,
+        /* Which possibility this particle belongs to. Round-robin keeps the
+           four tones evenly populated without any randomness drift. */
+        branch: index % ((this.tideConfig && this.tideConfig.possibility
+          && this.tideConfig.possibility.count) || 4),
+        shiverFreq: lerp(5.5, 9.5, Math.random()),
         speedBias: lerp(variance[0], variance[1], Math.random()),
         channelOffset: channelOffset,
         lateralBias: (Math.random() * 2 - 1) * 0.18,
@@ -225,10 +259,21 @@
     }
 
     setRisk(risk) {
-      // Only the target is stored here: update() eases toward it, so a slider
-      // jump reads as water gradually growing restless instead of a snap.
-      this.riskTarget = clamp(Number(risk) || 0, 0, 100);
-      sampleRiskColor(this.riskTarget, this.targetColor);
+      // The app still feeds a single risk number, but it now drives TWO
+      // separate channels:
+      //   tension   -> how tightly the water is constrained (motion)
+      //   openCount -> how many futures are still open (colour)
+      const value = clamp(Number(risk) || 0, 0, 100);
+      this.riskTarget = value;
+      this.tensionTarget = flow.smoothstep(0.15, 0.88, value / 100);
+      this.setPossibility(1 + Math.round((this.possibility.count - 1) * this.tensionTarget));
+    }
+
+    /* How many branches are still open. 4 = everything still possible,
+       1 = committed. Each closing branch fades through grey on its own, so the
+       eye sees them go one at a time rather than all at once. */
+    setPossibility(openCount) {
+      this.openCount = clamp(Math.round(openCount), 1, this.possibility.count);
     }
 
     /* ---- Risk Tide V2 pointer layer ----------------------------------
@@ -474,8 +519,8 @@
     }
 
     speedFactor(risk) {
-      // Risk Tide V2: risk is expressed mainly through turbulence, so the
-      // global speed ramp stays deliberately gentle (0.86x -> 1.86x).
+      // Taut water moves faster, but only gently (0.86x -> 1.86x). Speed is
+      // not the message - tension is.
       const t = flow.smoothstep(0, 1, clamp(risk / 100, 0, 1));
       return 0.86 + t * 1.0;
     }
@@ -496,14 +541,36 @@
     update(now, delta) {
       const dt = Math.min(delta, 0.05);
       const tide = this.tideConfig;
-      const riskBase = tide.riskSmoothing !== undefined ? tide.riskSmoothing : 0.12;
-      const colorBase = tide.colorSmoothing !== undefined ? tide.colorSmoothing : 0.12;
+      const smoothBase = tide.tensionSmoothing !== undefined ? tide.tensionSmoothing : 0.12;
       // Exponential smoothing on deltaTime, so 60 / 120 / 144 Hz share one
-      // time constant and risk reads like slowly changing weather.
-      this.risk = lerp(this.risk, this.riskTarget, 1 - Math.pow(riskBase, dt));
-      this.riskColor.r = Math.round(lerp(this.riskColor.r, this.targetColor.r, 1 - Math.pow(colorBase, dt)));
-      this.riskColor.g = Math.round(lerp(this.riskColor.g, this.targetColor.g, 1 - Math.pow(colorBase, dt)));
-      this.riskColor.b = Math.round(lerp(this.riskColor.b, this.targetColor.b, 1 - Math.pow(colorBase, dt)));
+      // time constant and the water tightens like weather, not like a switch.
+      this.tension = lerp(this.tension, this.tensionTarget, 1 - Math.pow(smoothBase, dt));
+      this.risk = lerp(this.risk, this.riskTarget, 1 - Math.pow(smoothBase, dt));
+
+      /* --- possibility: close / reopen branches, then resolve colours ---- */
+      const pcount = this.possibility.count;
+      const closeSpeed = 1 / Math.max(0.05, this.possibility.closeDuration);
+      for (let b = 0; b < pcount; b += 1) {
+        const target = b < this.openCount ? 0 : 1;
+        const speed = closeSpeed * (0.85 + b * this.possibility.stagger);
+        const current = this.branchClose[b];
+        if (current < target) this.branchClose[b] = Math.min(target, current + speed * dt);
+        else if (current > target) this.branchClose[b] = Math.max(target, current - speed * dt);
+      }
+      let wr = 0;
+      let wg = 0;
+      let wb = 0;
+      for (let b = 0; b < pcount; b += 1) {
+        resolveBranchTone(this.possibility.tones[b], this.branchClose[b], this.possibility, this.branchRGB[b]);
+        wr += this.branchRGB[b].r;
+        wg += this.branchRGB[b].g;
+        wb += this.branchRGB[b].b;
+      }
+      // The water's overall colour is the mean of the branch tones, so it
+      // converges to the surviving colour as branches are absorbed.
+      this.waterColor.r = Math.round(wr / pcount);
+      this.waterColor.g = Math.round(wg / pcount);
+      this.waterColor.b = Math.round(wb / pcount);
 
       const moving = this.map && this.map.getMoving && this.map.getMoving();
       if (this.routeDirty || (moving && this.elapsed % 0.09 < dt)) {
@@ -545,15 +612,19 @@
         else p.active = seenSurf++ < surfQuota;
       }
 
-      const riskNorm = clamp(this.risk / 100, 0, 1);
-      // Risk becomes turbulence, eased so the low range stays calm and the
-      // instability only grows obvious from the mid range upward.
-      const riskTurbulence = flow.smoothstep(
-        tide.turbulenceLowEdge !== undefined ? tide.turbulenceLowEdge : 0.16,
-        tide.turbulenceHighEdge !== undefined ? tide.turbulenceHighEdge : 0.92,
-        riskNorm
-      );
-      this.riskTurbulence = riskTurbulence;
+      /* ---- the single dynamic channel: TENSION --------------------------
+         slack (0) = wide / slow / varied / long trail
+         taut  (1) = narrow / fast / uniform / short trail
+         Taut means *constrained*. It is never "messier" - the old
+         risk -> chaos mapping is deliberately gone. */
+      const tension = this.tension;
+      const tensionChannel = pairAt(tide.tensionChannel, tension, 1.6, 0.55);
+      const tensionLateral = pairAt(tide.tensionLateral, tension, 1.5, 0.45);
+      const tensionCurl = pairAt(tide.tensionCurl, tension, 1.4, 0.6);
+      const tensionEddy = pairAt(tide.tensionEddy, tension, 1.2, 0.5);
+      const tensionTrail = pairAt(tide.tensionTrail, tension, 1.35, 0.7);
+      const tensionShear = pairAt(tide.tensionShear, tension, 1.35, 0.25);
+      const shiverAmp = (tide.shiverAmp !== undefined ? tide.shiverAmp : 0.5) * tension;
 
       // Hover wake: purely visual weight. A quicker pointer pass wakes the
       // water slightly more but lets it settle sooner.
@@ -583,9 +654,7 @@
       const totalLength = this.getPathLength();
       const baseChannel = clamp(totalLength * 0.035, 24, 90) * (this.profile.mobile ? 0.82 : 1);
       const speedFactor = this.speedFactor(this.risk);
-      const curlStrength = (this.profile.mobile ? 8 : 11)
-        * (0.7 + riskTurbulence * (tide.turbulenceCurlGain || 1.8))
-        * (moving ? 0.55 : 1);
+      const curlStrength = (this.profile.mobile ? 8 : 11) * tensionCurl * (moving ? 0.55 : 1);
       const channelWidths = tide.channelWidth || { fog: 1.15, flow: 0.5, highlight: 0.3 };
       const driftAmps = tide.lateralAmplitude || { fog: 0.5, flow: 0.22, highlight: 0.11 };
       const trailBaseCfg = tide.trailLength || { fog: 0.85, flow: 1.05, highlight: 1.2 };
@@ -593,10 +662,6 @@
       const layerSizeCfg = tide.layerSize || { fog: 0.94, flow: 1, highlight: 0.88 };
       const globalOpacity = tide.globalOpacity !== undefined ? tide.globalOpacity : 1;
       const driftNoiseAmp = tide.driftNoiseAmp !== undefined ? tide.driftNoiseAmp : 0.2;
-      const turbulenceDriftGain = tide.turbulenceDriftGain !== undefined ? tide.turbulenceDriftGain : 1.35;
-      const eddyGain = tide.turbulenceEddyGain !== undefined ? tide.turbulenceEddyGain : 0.85;
-      const speedSpreadGain = tide.turbulenceSpeedSpread !== undefined ? tide.turbulenceSpeedSpread : 0.5;
-      const channelRiskGain = tide.channelRiskGain !== undefined ? tide.channelRiskGain : 0.3;
       const convergeStart = tide.channelConvergeStart !== undefined ? tide.channelConvergeStart : 0.8;
       const convergeAmount = tide.channelConvergeAmount !== undefined ? tide.channelConvergeAmount : 0.5;
       const fadeIn = tide.lifeFadeIn !== undefined ? tide.lifeFadeIn : 0.1;
@@ -613,7 +678,7 @@
 
         /* ---- forward motion: personal bias + very slow modulation ------- */
         const modulation = 1 + Math.sin(time * particle.modFreq + particle.modPhase) * modulationAmp;
-        const shear = 1 + (particle.speedBias - 1) * (1 + riskTurbulence * speedSpreadGain);
+        const shear = 1 + (particle.speedBias - 1) * tensionShear;
         const layerSpeed = layer === 0 ? 0.78 : (layer === 1 ? 1.05 : 1.25);
         particle.previousTravel = particle.travel;
         particle.travel += particle.speed * speedFactor * particle.speedBias * modulation * shear * layerSpeed * dt;
@@ -629,6 +694,10 @@
         /* ---- natural tide: two incommensurate waves + shared noise ------ */
         const waveA = Math.sin(time * particle.tideFreqA + particle.phaseA);
         const waveB = Math.sin(time * particle.tideFreqB + particle.phaseB);
+        // A fast micro-tremor that only appears when the water is taut. It is
+        // *added* rather than raising the wave frequency, so tightening never
+        // causes a phase jump.
+        const shiver = Math.sin(time * particle.shiverFreq + particle.phase * 2.3) * shiverAmp;
         const noiseSeed = (particle.flowSeed % 97) * 0.37;
         const noise = flow.noiseUnit(progress * 200 + noiseSeed, particle.phase * 30, (time * 0.3) | 0);
         const lateralDrift = waveA * 0.6 + waveB * 0.4 + noise * driftNoiseAmp;
@@ -641,21 +710,18 @@
         // The channel widens slightly with risk ("rising tide") and narrows
         // again near the destination so the water gathers instead of bulging.
         const convergence = 1 - flow.smoothstep(convergeStart, 1, progress) * convergeAmount;
-        const channelHalf = baseChannel
-          * channelWidths[layerKey]
-          * (1 + riskTurbulence * channelRiskGain)
-          * convergence;
+        const channelHalf = baseChannel * channelWidths[layerKey] * tensionChannel * convergence;
 
         this.samplePath(progress, pathSample);
 
         /* ---- short-lived local eddies, per-particle ---------------------- */
-        const eddy = Math.sin(time * 0.34 + particle.eddySeed + progress * 5.5) * riskTurbulence * eddyGain;
+        const eddy = Math.sin(time * 0.34 + particle.eddySeed + progress * 5.5) * tension * tensionEddy;
         const wobble = particle.wobble * Math.sin(time * 0.47 + particle.phase * 1.7) * (layer === 0 ? 1.6 : 0.7);
-        const oscillating = (lateralDrift * 0.55 + eddy * 0.5 + wobble * 0.28)
-          * (1 + riskTurbulence * turbulenceDriftGain)
+        const oscillating = (lateralDrift * 0.55 + eddy * 0.5 + wobble * 0.28 + shiver * 0.2)
+          * tensionLateral
           * driftAmps[layerKey];
         const drift = particle.channelOffset + particle.lateralBias + particle.lateral + oscillating;
-        // Hard bound keeps heading route-led even at maximum turbulence.
+        // Hard bound keeps the heading route-led even at full tension.
         const bounded = clamp(drift, -1.5, 1.5);
         let x = pathSample.x - pathSample.ty * bounded * channelHalf;
         let y = pathSample.y + pathSample.tx * bounded * channelHalf;
@@ -715,13 +781,18 @@
         /* ---- trail: short, tapered, only lightly state-dependent -------- */
         const speedTerm = 1 + clamp(particle.speed / 0.11, 0, 1) * (tide.trailSpeedGain || 0.35);
         particle.renderTrail = clamp(
-          trailBaseCfg[layerKey] * particle.trailBias * speedTerm
-            * (1 + riskTurbulence * (tide.trailRiskGain || 0.32))
+          trailBaseCfg[layerKey] * particle.trailBias * speedTerm * tensionTrail
             * (1 + wake * (tide.wakeTrailGain || 0.5))
             * (1 + resonance * 0.35),
           0.2,
           2.0
         );
+
+        /* ---- this particle wears the tone of its own possibility ------- */
+        const branchRGB = this.branchRGB[particle.branch] || this.branchRGB[0];
+        particle.colR = branchRGB.r;
+        particle.colG = branchRGB.g;
+        particle.colB = branchRGB.b;
       }
 
       this.arrivalPulse = Math.max(0, this.arrivalPulse - dt * 0.72);
@@ -731,17 +802,6 @@
         if (!ripple.active) continue;
         ripple.age += dt;
         if (ripple.age >= ripple.life) ripple.active = false;
-      }
-      if (this.risk > 85) {
-        this.stormCooldown -= dt;
-        if (this.stormCooldown <= 0) {
-          this.stormEnergy = 1;
-          this.stormCooldown = 1.5 + Math.random() * 2.2;
-          this.stormSeed = Math.random() * 1000;
-        }
-        this.stormEnergy = Math.max(0, this.stormEnergy - dt * 0.78);
-      } else {
-        this.stormEnergy = Math.max(0, this.stormEnergy - dt * 1.5);
       }
       this.elapsed += dt;
     }
@@ -766,7 +826,7 @@
       const radius = 18 + (1 - pulse) * 72;
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
-      ctx.strokeStyle = 'rgba(' + this.riskColor.r + ',' + this.riskColor.g + ',' + this.riskColor.b + ',' + (pulse * 0.38) + ')';
+      ctx.strokeStyle = 'rgba(' + this.waterColor.r + ',' + this.waterColor.g + ',' + this.waterColor.b + ',' + (pulse * 0.38) + ')';
       ctx.lineWidth = 1.2 + pulse * 2.4;
       ctx.beginPath();
       ctx.arc(end.x, end.y, radius, 0, Math.PI * 2);
@@ -774,36 +834,14 @@
       ctx.restore();
     }
 
-    drawStormBursts() {
-      if (this.stormEnergy <= 0.01 || !this.projected || this.projected.length < 2) return;
-      const ctx = this.ctx;
-      const energy = this.stormEnergy * this.stormEnergy;
-      ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
-      const count = this.profile.mobile ? 2 : 4;
-      for (let i = 0; i < count; i += 1) {
-        const t = ((this.stormSeed + i * 0.23) % 1 + 1) % 1;
-        const index = Math.min(this.sampleCount, Math.floor(t * this.sampleCount));
-        const x = this.samplesX[index];
-        const y = this.samplesY[index];
-        const radius = 8 + energy * (18 + i * 5);
-        const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
-        gradient.addColorStop(0, 'rgba(231,46,42,' + (0.18 * energy) + ')');
-        gradient.addColorStop(0.42, 'rgba(124,18,19,' + (0.14 * energy) + ')');
-        gradient.addColorStop(1, 'rgba(20,0,0,0)');
-        ctx.fillStyle = gradient;
-        ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
-      }
-      ctx.restore();
-    }
 
     drawNebulaClouds() {
       if (!this.projected || this.projected.length < 2) return;
       const ctx = this.ctx;
       const count = this.profile.mobile ? 3 : 6;
-      const r = this.riskColor.r;
-      const g = this.riskColor.g;
-      const b = this.riskColor.b;
+      const r = this.waterColor.r;
+      const g = this.waterColor.g;
+      const b = this.waterColor.b;
       ctx.save();
       ctx.globalCompositeOperation = 'source-over';
       for (let i = 0; i < count; i += 1) {
@@ -831,9 +869,9 @@
       const origin = this.projected[0];
       const pulse = 0.72 + Math.sin(this.elapsed * 1.1) * 0.18;
       const radius = (this.profile.mobile ? 28 : 42) * pulse;
-      const r = this.riskColor.r;
-      const g = this.riskColor.g;
-      const b = this.riskColor.b;
+      const r = this.waterColor.r;
+      const g = this.waterColor.g;
+      const b = this.waterColor.b;
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
       const halo = ctx.createRadialGradient(origin.x, origin.y, 0, origin.x, origin.y, radius);
@@ -860,9 +898,9 @@
       const widthBase = tide.rippleWidth || 1.1;
       const alphaBase = tide.rippleAlpha !== undefined ? tide.rippleAlpha : 0.19;
       const delay = tide.rippleDelay !== undefined ? tide.rippleDelay : 0.11;
-      const r = this.riskColor.r;
-      const g = this.riskColor.g;
-      const b = this.riskColor.b;
+      const r = this.waterColor.r;
+      const g = this.waterColor.g;
+      const b = this.waterColor.b;
       ctx.save();
       ctx.globalCompositeOperation = 'source-over';
       ctx.lineCap = 'round';
@@ -903,9 +941,9 @@
       if (fade <= 0.01) return;
       const alphaBase = (tide.resonanceBandAlpha !== undefined ? tide.resonanceBandAlpha : 0.12) * fade;
       const steps = this.profile.mobile ? 4 : 7;
-      const r = this.riskColor.r;
-      const g = this.riskColor.g;
-      const b = this.riskColor.b;
+      const r = this.waterColor.r;
+      const g = this.waterColor.g;
+      const b = this.waterColor.b;
       const sample = this.bandSample;
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
@@ -948,15 +986,14 @@
 
       this.drawNebulaClouds();
       this.drawOriginSource();
-      this.drawStormBursts();
       this.drawResonanceBand();
 
       const moving = this.map && this.map.getMoving && this.map.getMoving();
       const movingAlpha = moving ? 0.7 : 1;
       const trailSegments = (this.tideConfig && this.tideConfig.trailSegments) || { fog: 2, flow: 3, highlight: 2 };
-      const r = this.riskColor.r;
-      const g = this.riskColor.g;
-      const b = this.riskColor.b;
+      const r = this.waterColor.r;
+      const g = this.waterColor.g;
+      const b = this.waterColor.b;
 
       for (let layer = 0; layer < 3; layer += 1) {
         const isFog = layer === 0;
@@ -970,10 +1007,15 @@
           if (particle.layer !== layer || particle.renderAlpha <= 0.005) continue;
           const alpha = particle.renderAlpha * movingAlpha;
           const size = (particle.renderSize || particle.size) * (moving ? 0.82 : 1);
-          const tint = particle.spark * 0.28;
-          const pr = Math.round(lerp(r, 247, tint));
-          const pg = Math.round(lerp(g, 250, tint));
-          const pb = Math.round(lerp(b, 238, tint));
+          // Each particle wears the tone of the possibility it belongs to, so
+          // several futures are visible at once as layers of one current.
+          const cr = particle.colR !== undefined ? particle.colR : r;
+          const cg = particle.colG !== undefined ? particle.colG : g;
+          const cb = particle.colB !== undefined ? particle.colB : b;
+          const tint = particle.spark * 0.18;
+          const pr = Math.round(lerp(cr, 247, tint));
+          const pg = Math.round(lerp(cg, 250, tint));
+          const pb = Math.round(lerp(cb, 238, tint));
           const vx = particle.x - particle.px;
           const vy = particle.y - particle.py;
           const tail = (particle.renderTrail || 0.6) * (moving ? 0.82 : 1);
@@ -1016,7 +1058,7 @@
 
           if (isFog) {
             // Ink-cloud head: a soft tinted dot, not a spark.
-            ctx.fillStyle = 'rgba(' + Math.round(r * 0.45) + ',' + Math.round(g * 0.7) + ',' + Math.round(b * 0.76) + ',' + Math.min(0.36, alpha * 0.72) + ')';
+            ctx.fillStyle = 'rgba(' + Math.round(cr * 0.45) + ',' + Math.round(cg * 0.7) + ',' + Math.round(cb * 0.76) + ',' + Math.min(0.36, alpha * 0.72) + ')';
             ctx.beginPath();
             ctx.arc(particle.x, particle.y, Math.max(0.14, size * 0.34), 0, Math.PI * 2);
             ctx.fill();
@@ -1033,7 +1075,7 @@
               ctx.shadowColor = 'rgba(' + pr + ',' + pg + ',' + pb + ',0.46)';
             }
             const stretch = size * (0.5 + particle.spark * 0.35);
-            ctx.fillStyle = 'rgba(' + Math.min(255, r + 46) + ',' + Math.min(255, g + 42) + ',' + Math.min(255, b + 34) + ',' + Math.min(0.9, alpha * 1.05) + ')';
+            ctx.fillStyle = 'rgba(' + Math.min(255, cr + 46) + ',' + Math.min(255, cg + 42) + ',' + Math.min(255, cb + 34) + ',' + Math.min(0.9, alpha * 1.05) + ')';
             ctx.beginPath();
             ctx.arc(particle.x + vx / vMag * stretch, particle.y + vy / vMag * stretch, Math.max(0.16, size * 0.26), 0, Math.PI * 2);
             ctx.fill();
@@ -1100,6 +1142,8 @@
   global.RiskTideParticles = InkParticleSystem;
   global.RiskTideParticleProfile = detectProfile;
 })(window);
+
+
 
 
 

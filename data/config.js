@@ -1,4 +1,4 @@
-﻿/* global window */
+/* global window */
 (function (global) {
   'use strict';
 
@@ -84,6 +84,49 @@
       }
     },
 
+    /* ---- Real-time weather (Open-Meteo) --------------------------------
+       Free, key-less and CORS-enabled, so the static GitHub Pages build can
+       call it directly. Weather only ever *adds* minutes to the route
+       estimate; it never lowers the risk. Set enabled:false to fall back to
+       the pure time-buffer model (the UI then shows "weather unavailable"). */
+    weather: {
+      enabled: true,
+      provider: 'open-meteo',
+      endpoint: 'https://api.open-meteo.com/v1/forecast',
+      timezone: 'Asia/Shanghai',
+      label: 'Open-Meteo',
+      refreshMinutes: 15,   // periodic re-fetch while the page stays open
+      cacheMinutes: 10,     // reuse one response for this long
+      timeoutMs: 9000,
+      forecastDays: 2,      // enough for a next-morning departure
+      maxExtraMinutes: 30,  // hard cap on the weather delay
+      /* Extra minutes are graded from the WMO code, wind, gusts,
+         precipitation probability and visibility. See js/weather.js. */
+      placeFallback: '路线中点',
+
+      /* ---- Map weather layer (js/weather-visual.js) ---------------------
+         Draws the weather on its own canvas above the map grid. The ink
+         particle system is never touched, so its tuning stays intact.
+         source: 'current' shows what is happening now, 'departure' shows
+         the forecast for the planned departure hour instead. */
+      visual: {
+        enabled: true,
+        source: 'current',
+        budget: { desktop: 420, mobile: 130 },  // max raindrops / flakes
+        dprCap: { desktop: 1.5, mobile: 1.25 },
+        maxLeanDeg: 26,                          // strongest wind lean
+        rainColor: '38,64,78',                   // ink blue, not white
+        snowColor: '236,243,246',
+        rainSpeed: [430, 880],                   // px per second
+        snowSpeed: [38, 88],
+        rainLength: [9, 26],
+        snowSize: [1.3, 3.0],
+        rainAlpha: [0.15, 0.32],
+        snowAlpha: [0.28, 0.55],
+        flash: true                              // thunderstorm screen flash
+      }
+    },
+
     colors: {
       ink: '#020708',
       paper: '#d9d0b7',
@@ -124,19 +167,46 @@
       // ---- Channel (the invisible current width) ------------------------
       channelWidth: { fog: 1.15, flow: 0.5, highlight: 0.3 },
       channelConcentration: 1.8,        // >1 keeps most particles near centre
-      channelRiskGain: 0.3,             // mild "rising tide" with risk
       channelConvergeStart: 0.8,        // converge into the destination
       channelConvergeAmount: 0.5,
 
-      // ---- Risk --------------------------------------------------------
-      turbulenceLowEdge: 0.16,          // calm until the mid range
-      turbulenceHighEdge: 0.92,
-      turbulenceDriftGain: 1.85,        // bounded: heading stays route-led
-      turbulenceCurlGain: 1.8,
-      turbulenceEddyGain: 1.05,
-      turbulenceSpeedSpread: 0.5,
-      riskSmoothing: 0.12,              // exponential base, smaller = slower
-      colorSmoothing: 0.12,
+      // ---- Tension: the only dynamic channel ---------------------------
+      // Every pair is [slack, taut].
+      //   slack = wide / slow / varied / long trail
+      //   taut  = narrow / fast / uniform / short trail
+      // Taut means *constrained*, never "messier": the old risk->chaos
+      // mapping is deliberately gone.
+      tensionSmoothing: 0.12,           // exponential base, smaller = slower
+      tensionChannel: [1.6, 0.55],      // channel half-width multiplier
+      tensionLateral: [1.5, 0.45],      // lateral drift amplitude
+      tensionCurl: [1.4, 0.6],          // curl / eddy strength
+      tensionEddy: [1.2, 0.5],
+      tensionTrail: [1.35, 0.7],        // trail length
+      tensionShear: [1.35, 0.25],       // how much individual speed bias survives
+      shiverAmp: 0.5,                   // micro-tremor at full tension
+      shiverFreq: [5.5, 9.5],
+
+      // ---- Possibility: the only colour channel -------------------------
+      // Four tones of ONE family (not four fighting hues). They are absorbed
+      // one by one into a single clear colour, so the eye reads
+      // "several futures" -> "one future" instead of "dirty".
+      possibility: {
+        count: 4,
+        /* Branch 0 is the one that stays open when everything settles, so it
+           is the surviving colour itself. The other three are absorbed into
+           it one by one - which is why the mean tone converges to 清青. */
+        tones: [
+          [46, 143, 168],     // 清青 - the survivor
+          [30, 75, 87],       // 墨青
+          [110, 147, 160],    // 苍青
+          [155, 182, 190]     // 淡青
+        ],
+        absorb: [46, 143, 168],  // qing qing - the one that survives
+        grey: [122, 126, 128],   // desaturated waypoint on the way out
+        greyAt: 0.45,            // 0..1 close-progress where fully grey
+        closeDuration: 0.6,
+        staggerPerBranch: 0.1
+      },
 
       // ---- Trail -------------------------------------------------------
       trailLength: { fog: 1.05, flow: 1.35, highlight: 1.55 },
@@ -192,6 +262,9 @@
 
   global.RiskTideConfig = config;
 })(window);
+
+
+
 
 
 
