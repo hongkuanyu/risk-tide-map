@@ -199,7 +199,7 @@
        points. See js/ink-flow.js. */
     inkFlow: {
       enabled: true,
-      grid: { desktop: 420, mobile: 280 },   // finer grid -> crisper core
+      grid: { desktop: 300, mobile: 200 },   // finer grid -> crisper core
       influence: { radius: 8, coreRadius: 2.5 },  // thin stream, not a blob
       speed: 108,            // px/s along the route at the core
       edgeShear: 0.35,      // edges lag the core -> stretching / shear

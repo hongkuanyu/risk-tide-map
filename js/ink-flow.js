@@ -136,7 +136,9 @@
 
       const mobile = (global.innerWidth || 960) <= 760;
       const target = (this.config.grid && (mobile ? this.config.grid.mobile : this.config.grid.desktop)) || 168;
-      const cell = Math.max(2, Math.round(Math.max(w, h) / target)); // was clamped to 5px, which made every finer grid setting a no-op
+      let cell = Math.max(3, Math.round(Math.max(w, h) / target));
+      // hard budget: the CPU solver must not exceed ~150k cells per frame
+      while ((Math.ceil(w / cell) + 2) * (Math.ceil(h / cell) + 2) > 150000) cell += 1;
       const cols = Math.ceil(w / cell) + 2;
       const rows = Math.ceil(h / cell) + 2;
       if (cols === this.cols && rows === this.rows && cell === this.cell) return;
@@ -156,6 +158,23 @@
       this.off.width = cols;
       this.off.height = rows;
       this.routeDirty = true;
+    }
+
+    /* Adaptive quality: if the solver is eating the frame budget, coarsen
+       the simulation grid; when it is comfortable again, refine it. */
+    adaptQuality(dt) {
+      const ms = dt * 1000;
+      this.frameAvg = this.frameAvg ? this.frameAvg + (ms - this.frameAvg) * 0.05 : ms;
+      this.adaptTimer = (this.adaptTimer || 0) + dt;
+      if (this.adaptTimer < 2.5) return;
+      this.adaptTimer = 0;
+      const before = this.cell;
+      if (this.frameAvg > 24 && this.cell < 14) this.cell += 1;
+      else if (this.frameAvg < 14 && this.cell > 3) this.cell -= 1;
+      if (this.cell !== before) {
+        this.cols = 0; this.rows = 0;
+        this.resize();
+      }
     }
 
     setRoute(route) { this.route = route || null; this.routeDirty = true; return this; }
@@ -395,6 +414,7 @@
       this.colour[2] = Math.round(lerp(this.colour[2], target[2], t));
       this.risk = lerp(this.risk, this.riskTarget, Math.min(1, dt * 4.5));
       this.step(dt, false);
+      this.adaptQuality(dt);
     }
 
     render() {
@@ -451,7 +471,9 @@
       for (let i = 0; i < this.cool.length; i += 1) {
         if (this.cool[i] + this.warm[i] > 0.05) wet += 1;
       }
-      return { cells: this.cols * this.rows, wet: wet, grid: this.cols + 'x' + this.rows, risk: Math.round(this.risk) };
+      return { cells: this.cols * this.rows, wet: wet, grid: this.cols + 'x' + this.rows,
+        cell: this.cell, fps: Math.round(1000 / Math.max(1, this.frameAvg || 16.7)),
+        frameMs: Number((this.frameAvg || 16.7).toFixed(1)), risk: Math.round(this.risk) };
     }
 
     frame(timestamp) {
