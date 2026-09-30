@@ -326,7 +326,35 @@
       }
       if (total < 8) { this.path = null; this.routeDirty = false; return; }
 
-      this.path = { x: x, y: y, nx: nx, ny: ny, dist: dist, total: total, count: count };
+      /* Curvature per sample: a brush slows and pools ink where the line
+         turns, so the renderer needs to know where the turns are. */
+      const curv = new Float32Array(count);
+      for (let i = 1; i < count - 1; i += 1) {
+        const ax = x[i] - x[i - 1];
+        const ay = y[i] - y[i - 1];
+        const bx = x[i + 1] - x[i];
+        const by = y[i + 1] - y[i];
+        const la = Math.hypot(ax, ay) || 1;
+        const lb = Math.hypot(bx, by) || 1;
+        curv[i] = Math.abs((ax * by - ay * bx) / (la * lb));
+      }
+
+      const poolCfg = (this.config.brush && this.config.brush.pool) || {};
+      const minCurv = poolCfg.minCurvature === undefined ? 0.5 : poolCfg.minCurvature;
+      const maxPools = poolCfg.max === undefined ? 14 : poolCfg.max;
+      const pools = [];
+      let lastPX = 1e9;
+      let lastPY = 1e9;
+      for (let i = 1; i < count - 1; i += 1) {
+        if (curv[i] < minCurv) continue;
+        if (Math.hypot(x[i] - lastPX, y[i] - lastPY) < 44) continue;
+        pools.push({ x: x[i], y: y[i], k: Math.min(1, curv[i]) });
+        lastPX = x[i];
+        lastPY = y[i];
+        if (pools.length >= maxPools) break;
+      }
+
+      this.path = { x: x, y: y, nx: nx, ny: ny, dist: dist, total: total, count: count, curv: curv, pools: pools };
       this.routeDirty = false;
     }
 
@@ -343,7 +371,11 @@
         const t = path.dist[i] / path.total;
         // strands gather at origin and destination, breathe in between
         const gather = smoothstep(0, envelope, t) * smoothstep(1, 1 - envelope, t);
-        const wave = Math.sin(t * Math.PI * 2 * strand.waveFreq + strand.wavePhase) * amplitude;
+        /* Two incommensurate waves make the bundle silhouette irregular along
+           its length - the thing that stops a stroke reading as a vector line. */
+        const wave = Math.sin(t * Math.PI * 2 * strand.waveFreq + strand.wavePhase) * amplitude
+          + Math.sin(t * Math.PI * 2 * strand.waveFreq * 2.37 + strand.wavePhase * 1.7 + strand.tint)
+            * amplitude * 0.48;
         const off = (strand.offset * baseWidth + wave) * gather;
         const px = path.x[i] + path.nx[i] * off;
         const py = path.y[i] + path.ny[i] * off;
@@ -376,7 +408,7 @@
     }
 
     getMetrics() {
-      return { strands: this.strands.length, runners: (this.config.runner || {}).count || 3, risk: Math.round(this.risk) };
+      return { strands: this.strands.length, brush: !!(this.config.brush && this.config.brush.enabled), pools: (this.path && this.path.pools) ? this.path.pools.length : 0, risk: Math.round(this.risk) };
     }
 
     update(dt) {
@@ -414,6 +446,7 @@
       if (!this.path) return;
 
       const cfg = this.config;
+      this.drawInkPools(ctx);
       const pulseCfg = cfg.pulse || {};
       const pulse = (pulseCfg.minAlphaGain || 0.05)
         + (this.risk / 100) * (pulseCfg.riskGain || 0.1);
@@ -470,6 +503,9 @@
 
       // Layer D: flowing ink units with long tapering tails
       this.drawRunners(ctx);
+
+      // V5: the travelling brush - the source of the motion now
+      this.drawBrushPass(ctx);
 
       // 甲: rare cinnabar pulse at extreme risk - low frequency, restrained
       const cp = cfg.cinnabarPulse;
@@ -549,6 +585,145 @@
           ctx.restore();
         }
       }
+    }
+
+    /* Ink pooling at the turns: a soft dark blot where a real brush would
+       have slowed down and let the pigment collect. Static, drawn under the
+       strokes so it reads as soaked paper. */
+    drawInkPools(ctx) {
+      const path = this.path;
+      const cfg = (this.config && this.config.brush && this.config.brush.pool) || {};
+      if (!path || !path.pools || !path.pools.length) return;
+      const baseR = cfg.radius || 8;
+      const baseA = cfg.alpha === undefined ? 0.18 : cfg.alpha;
+      for (let i = 0; i < path.pools.length; i += 1) {
+        const pool = path.pools[i];
+        const radius = baseR * (0.75 + pool.k * 0.85);
+        const alpha = baseA * (0.45 + pool.k * 0.55);
+        const grad = ctx.createRadialGradient(pool.x, pool.y, 0, pool.x, pool.y, radius);
+        grad.addColorStop(0, this.strandColour(0, alpha));
+        grad.addColorStop(1, this.strandColour(0, 0));
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(pool.x, pool.y, radius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    /* The brush itself: a pointed tip that leads, loaded with ink. */
+    drawBrushTip(ctx, x, y, tx, ty) {
+      const tip = (this.config.brush && this.config.brush.tip) || {};
+      const length = tip.length || 30;
+      const width = tip.width || 5.4;
+      const alpha = tip.alpha === undefined ? 0.52 : tip.alpha;
+      const bristles = Math.max(0, tip.bristles === undefined ? 4 : tip.bristles);
+      const nx = -ty;
+      const ny = tx;
+      const bxc = x - tx * length * 0.5;
+      const byc = y - ty * length * 0.5;
+      const fxc = x + tx * length * 0.5;
+      const fyc = y + ty * length * 0.5;
+
+      // body of the loaded tip: broad at the heel, coming to a point
+      ctx.fillStyle = this.strandColour(0, alpha);
+      ctx.beginPath();
+      ctx.moveTo(bxc + nx * width * 0.5, byc + ny * width * 0.5);
+      ctx.quadraticCurveTo(x + nx * width * 0.22, y + ny * width * 0.22, fxc, fyc);
+      ctx.quadraticCurveTo(x - nx * width * 0.22, y - ny * width * 0.22, bxc - nx * width * 0.5, byc - ny * width * 0.5);
+      ctx.closePath();
+      ctx.fill();
+
+      // bristle separation near the heel (kept very subtle)
+      if (bristles > 1) {
+        ctx.lineCap = 'round';
+        ctx.lineWidth = Math.max(0.35, width * 0.10);
+        ctx.strokeStyle = this.strandColour(0, alpha * 0.32);
+        for (let i = 0; i < bristles; i += 1) {
+          const f = (i / (bristles - 1)) - 0.5;
+          ctx.beginPath();
+          ctx.moveTo(bxc + nx * width * 0.42 * f, byc + ny * width * 0.42 * f);
+          ctx.lineTo(x + nx * width * 0.10 * f, y + ny * width * 0.10 * f);
+          ctx.stroke();
+        }
+      }
+    }
+
+    /* The wet pass: a window of fresh ink trailing the tip, drawn over the
+       settled bundle. Nothing is emitted or destroyed - the whole animation
+       is one brush travelling the line and re-wetting it. */
+    drawBrushPass(ctx) {
+      const cfg = this.config.brush || {};
+      const path = this.path;
+      if (!cfg.enabled || !path) return;
+      const motion = this.profile.reducedMotion ? (this.config.reducedMotionScale || 0.32) : 1;
+      const speed = (cfg.speed || 0.085) * motion;
+      const headDist = ((this.elapsed * speed) % 1) * path.total;
+      const windowLen = cfg.windowLength || 170;
+      const passes = Math.max(1, cfg.passes || 5);
+      const segments = 12;
+      const alphaGain = cfg.headAlphaGain === undefined ? 0.55 : cfg.headAlphaGain;
+      const widthGain = cfg.headWidthGain === undefined ? 0.30 : cfg.headWidthGain;
+      const baseWidth = rangeAt(this.profile.baseWidth, 0.5);
+      const gap = cfg.dryGap || {};
+      const run = Math.max(6, windowLen / 6);
+      const gapLen = ((gap.min || 2) + (gap.max || 15)) * 0.5;
+
+      ctx.save();
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.setLineDash([run, gapLen]);
+      ctx.lineDashOffset = -headDist * 0.55;
+      for (let p = 0; p < passes; p += 1) {
+        const lateral = passes > 1
+          ? ((p / (passes - 1)) - 0.5) * baseWidth * 0.66
+          : 0;
+        for (let s = 0; s < segments; s += 1) {
+          const t0 = s / segments;
+          const t1 = (s + 1) / segments;
+          const d0 = headDist - windowLen * (1 - t0);
+          const d1 = headDist - windowLen * (1 - t1);
+          if (d1 <= 0) continue;
+          const i0 = this.indexAtDistance(Math.max(0, d0));
+          const i1 = this.indexAtDistance(Math.max(0, d1));
+          const ramp = (t0 + t1) / 2;
+          const wet = Math.pow(ramp, 1.6);        // wettest right at the tip
+          const alpha = alphaGain * wet * 0.46;
+          if (alpha < 0.012) continue;
+          const nx0 = path.nx[i0];
+          const ny0 = path.ny[i0];
+          ctx.strokeStyle = this.strandColour(0, Math.min(0.72, alpha));
+          ctx.lineWidth = Math.max(0.5, (baseWidth / passes) * 1.45 * (1 + widthGain * wet));
+          ctx.beginPath();
+          ctx.moveTo(path.x[i0] + nx0 * lateral, path.y[i0] + ny0 * lateral);
+          for (let i = i0 + 1; i <= i1; i += 1) {
+            ctx.lineTo(path.x[i] + path.nx[i] * lateral, path.y[i] + path.ny[i] * lateral);
+          }
+          ctx.stroke();
+        }
+      }
+      ctx.setLineDash([]);
+      ctx.restore();
+
+      // the tip leads the wet window
+      const hi = this.indexAtDistance(headDist);
+      const tx = path.ny[hi];
+      const ty = -path.nx[hi];
+      const halo = cfg.halo;
+      if (halo) {
+        const hx = path.x[hi];
+        const hy = path.y[hi];
+        const radius = halo.radius || 26;
+        const grad = ctx.createRadialGradient(hx, hy, 0, hx, hy, radius);
+        grad.addColorStop(0, this.strandColour(0, halo.alpha === undefined ? 0.2 : halo.alpha));
+        grad.addColorStop(1, this.strandColour(0, 0));
+        ctx.save();
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(hx, hy, radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+      this.drawBrushTip(ctx, path.x[hi], path.y[hi], tx, ty);
     }
 
     pathAsPath() {

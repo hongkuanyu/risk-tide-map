@@ -1,4 +1,4 @@
-﻿/* global window, document */
+/* global window, document */
 (function (global) {
   'use strict';
 
@@ -236,6 +236,10 @@
     }
 
     updateMetrics(metrics) {
+      if (metrics && metrics.text) {
+        this.elements.metrics.textContent = metrics.text;
+        return;
+      }
       const label = metrics.mobile ? '移动端' : '桌面端';
       const quality = Math.round(metrics.quality * 100);
       this.elements.metrics.textContent = label + ' · ' + metrics.active + '/' + metrics.max + ' 粒子 · 质量 ' + quality + '% · ~' + metrics.fpsAverage + ' FPS';

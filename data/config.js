@@ -132,19 +132,19 @@
       layerShare: { wet: 0.25, main: 0.42, highlight: 0.22, runner: 0.11 },
       alpha: {
         wet: [0.05, 0.12],
-        main: [0.20, 0.36],
+        main: [0.17, 0.31],
         highlight: [0.32, 0.46],
         runner: [0.34, 0.48]
       },
       speed: [0.85, 1.20],                        // per-strand flow multiplier
       breathe: [0.90, 1.10],                      // slow width breathing
       breathePeriod: [7.5, 13.5],                 // seconds
-      waveAmp: 0.34,                              // lateral silk wobble
+      waveAmp: 0.68,                              // hand-drawn silhouette
       waveFreq: [0.35, 0.95],
-      centreBias: 1.35,                           // >1 keeps strands dense at centre
+      centreBias: 1.16,                           // >1 keeps strands dense at centre
       envelope: 0.22,                             // strands converge at both ends
       /* 飞白 / 断墨: dash pattern per strand, in px */
-      dash: { minRun: 40, maxRun: 140, minGap: 2, maxGap: 10, brokenShare: 0.26 },
+      dash: { minRun: 40, maxRun: 140, minGap: 3, maxGap: 15, brokenShare: 0.34 },
       riskRamp: [
         { at: 0.00, rgb: [0, 124, 108] },   // 青碧 / 孔雀青
         { at: 0.27, rgb: [15, 137, 105] },  // 青绿
@@ -159,6 +159,23 @@
       riskSpeedGain: 0.38,                        // faster when risky, gently
       pulse: { minAlphaGain: 0.05, riskGain: 0.10, freq: 0.42 },
       cinnabarPulse: { riskThreshold: 86, period: 6.5, width: 0.16, alpha: 0.20 },
+      /* ---- V5 · 毛笔笔锋 ------------------------------------------------
+         A brush travels the route and re-inks it. The settled stroke stays on
+         the paper; what moves is the wet pass: a window of fresh, darker,
+         slightly wider ink behind the tip, plus the brush tip itself. */
+      brush: {
+        enabled: true,
+        speed: 0.085,          // laps per second (one full pass ~12s)
+        windowLength: 250,     // px of wet ink trailing the tip
+        passes: 5,             // offset wet strokes travelling together
+        headAlphaGain: 0.90,   // extra ink where the brush just passed
+        headWidthGain: 0.55,   // the wet stroke is visibly fatter
+        tip: { length: 48, width: 9.5, alpha: 0.66, bristles: 6 },
+        halo: { radius: 26, alpha: 0.20 },   // the brush pressing the paper
+        dryGap: { min: 2, max: 15 },   // 飞白 along the wet pass
+        pool: { minCurvature: 0.5, alpha: 0.18, radius: 8, max: 14 }
+      },
+
       /* Layer D: a flowing ink unit with a long tapering tail (Bezier-ish),
          not a dot. Each runner is drawn as sub-segments whose width and alpha
          ramp from tail to head. */
@@ -185,6 +202,11 @@
        All particle-motion, interaction and trail tuning lives here so the
        look can be re-tuned without touching js/particles.js logic. */
     tide: {
+      /* V5: the particle tide is switched OFF. The route is now animated as a
+         brush painting - a wet brush travels along the line and re-inks it.
+         Flip this back to true to restore the particle system (the code is
+         untouched and still fully wired). */
+      enabled: false,
       /* ============ Risk Tide water tuning (single source of truth) =====
          Everything that decides how the current *feels* lives here.
          Motion -> channel -> risk -> trail -> layers -> interactions. */

@@ -150,11 +150,18 @@
       if (typeof particles.rebuildProjectedPath === 'function') particles.rebuildProjectedPath();
     });
 
-    particles.start();
+    /* V5: with tide.enabled = false the particle system is left dormant - no
+       animation loop, no pointer effects - so the brush renderer owns all of
+       the motion. The instance stays alive so every existing reference (risk,
+       route, metrics) keeps working, and flipping the flag restores it. */
+    const particleTideEnabled = !(config.tide && config.tide.enabled === false);
+    if (particleTideEnabled) {
+      particles.start();
+      // Risk Tide V2 pointer layer: hover wake, click ripple, route resonance.
+      // All three are visual-only and reuse the existing animation loop.
+      particles.bindPointer(document.getElementById('map-shell'));
+    }
     if (silk) silk.start();
-    // Risk Tide V2 pointer layer: hover wake, click ripple, route resonance.
-    // All three are visual-only and reuse the existing animation loop.
-    particles.bindPointer(document.getElementById('map-shell'));
     applyState(ui.getState());
 
     function showcaseTick(timestamp) {
@@ -280,7 +287,17 @@
     }, { passive: true });
 
     global.setInterval(function () {
-      if (!showcaseActive) ui.updateMetrics(particles.getMetrics());
+      if (showcaseActive) return;
+      const metrics = particles.getMetrics();
+      if (!particleTideEnabled && silk) {
+        const state = silk.getMetrics();
+        ui.updateMetrics({
+          text: (metrics.mobile ? '移动端' : '桌面端') + ' · 毛笔墨流 · '
+            + state.strands + ' 条墨丝' + (state.pools ? ' · ' + state.pools + ' 处转角墨积' : '')
+        });
+      } else {
+        ui.updateMetrics(metrics);
+      }
     }, 1800);
 
     global.RiskTideApp = {
