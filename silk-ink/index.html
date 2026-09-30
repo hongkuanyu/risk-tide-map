@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#efe8dc">
+  <meta name="description" content="风险潮汐：把出行时间压力变成可见的水墨粒子流。">
+  <title>风险潮汐 · 全国时间风险地图</title>
+  <link rel="stylesheet" href="vendor/maplibre-gl.css?v=48">
+  <link rel="stylesheet" href="styles.css?v=48">
+</head>
+<body>
+  <div class="app-shell" id="app-shell">
+    <header class="topbar">
+      <a class="brand" href="./" aria-label="回到首页">
+        <span class="brand-mark" aria-hidden="true">潮</span>
+        <span class="brand-copy">
+          <strong>风险潮汐 · 全国时间风险地图</strong>
+          <small>RISK TIDE · NATIONWIDE TRAVEL BUFFER INTELLIGENCE</small>
+        </span>
+      </a>
+
+      <div class="scenario-strip" role="group" aria-label="场景预设">
+        <button class="scenario-chip" type="button" data-scenario="train" aria-pressed="true">赶高铁</button>
+        <button class="scenario-chip" type="button" data-scenario="flight" aria-pressed="false">赶飞机</button>
+        <button class="scenario-chip" type="button" data-scenario="exam" aria-pressed="false">考试</button>
+        <button class="scenario-chip" type="button" data-scenario="interview" aria-pressed="false">面试</button>
+        <button class="scenario-chip" type="button" data-scenario="meeting" aria-pressed="false">会议</button>
+        <button class="scenario-chip" type="button" data-scenario="custom" aria-pressed="false">自定义</button>
+      </div>
+
+      <div class="topbar-meta">
+        <label class="departure-badge" for="departure-time-picker" title="点击可直接修改计划出发时间">
+          <strong id="topbar-departure">16:00</strong>
+          <span>计划出发</span>
+          <span id="topbar-scenario-note">按高铁 18:00 出发</span>
+          <input id="departure-time-picker" class="departure-time-picker" type="time" step="60" value="16:00" aria-label="修改计划出发时间">
+        </label>
+        <span class="data-pill"><i></i> 地图 API · 高德 / OSM</span>
+      </div>
+    </header>
+
+    <section class="search-row" id="search-row" aria-label="起终点搜索">
+      <div class="search-field">
+        <span class="search-dot search-dot-origin" aria-hidden="true"></span>
+        <div class="search-input-wrap">
+          <label for="origin-input">起点</label>
+          <input id="origin-input" type="text" placeholder="输入起点" autocomplete="off" spellcheck="false">
+        </div>
+      </div>
+      <button class="search-swap" id="search-swap" type="button" aria-label="交换起点和终点">
+        <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M7 7h11l-3-3M17 17H6l3 3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="search-field">
+        <span class="search-dot search-dot-dest" aria-hidden="true"></span>
+        <div class="search-input-wrap">
+          <label for="dest-input">终点</label>
+          <input id="dest-input" type="text" placeholder="输入目的地" autocomplete="off" spellcheck="false">
+        </div>
+      </div>
+      <button class="search-locate" id="search-locate" type="button">
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+        使用当前位置
+      </button>
+      <p class="search-hint" id="search-hint" role="status" aria-live="polite"></p>
+    </section>
+    <main class="stage">
+      <section class="map-shell" id="map-shell" data-risk-level="unknown" aria-label="出行风险路线地图">
+        <div id="map" class="map"></div>
+        <canvas id="particle-canvas" class="particle-canvas" aria-hidden="true"></canvas>
+        <div class="map-vignette" aria-hidden="true"></div>
+        <div class="map-grid" aria-hidden="true"></div>
+        <div class="map-legend" aria-label="地图图例">
+          <span><i class="legend-dot safe"></i>起点</span>
+          <span><i class="legend-dot station"></i>终点 / 风险源</span>
+          <span><i class="legend-line"></i>风险潮汐</span>
+        </div>
+        <div class="showcase-overlay" id="showcase-overlay" aria-live="polite">
+          <div class="showcase-kicker">INK TIDE · AUTO PROLOGUE</div>
+          <div class="showcase-copy">让最后一小时的迟疑，先被看见。</div>
+          <div class="showcase-progress"><span id="showcase-progress"></span></div>
+        </div>
+        <div class="map-status" id="status-line" role="status" data-type="normal"></div>
+      </section>
+
+      <aside class="control-panel" id="control-panel" aria-label="出行风险控制面板">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">DEPARTURE CONSOLE</p>
+            <h1>把时间压力<br><em>变成可见的潮汐。</em></h1>
+          </div>
+          <span class="live-stamp">RISK / 0–100</span>
+        </div>
+
+        <section class="panel-section">
+          <div class="section-label"><span>01</span><strong>选择出行方式</strong></div>
+          <div class="mode-grid">
+            <button class="mode-button" id="mode-taxi" type="button" aria-pressed="false">
+              <span class="mode-icon">↗</span>
+              <span><b>网约车</b><small>多方案道路路线</small></span>
+            </button>
+            <button class="mode-button" id="mode-bus" type="button" aria-pressed="false">
+              <span class="mode-icon">≋</span>
+              <span><b>公交</b><small>待核对线路</small></span>
+            </button>
+          </div>
+        </section>
+
+        <label class="field route-variant-field" id="route-variant-field" hidden>
+          <span>路线方案</span>
+          <select id="route-variant" aria-label="选择路线方案"></select>
+        </label>
+
+        <section class="panel-section">
+          <div class="section-label"><span>02</span><strong>输入时间条件</strong></div>
+          <div class="form-grid">
+            <label class="field">
+              <span>发车 / 开始时间</span>
+              <input id="train-time" type="time" value="18:00" step="60">
+            </label>
+            <label class="field">
+              <span>路线预计时间 / 分钟</span>
+              <input id="route-minutes" type="number" min="1" max="120" step="1" placeholder="待填写" disabled>
+            </label>
+            <label class="field">
+              <span>安全预留 / 分钟</span>
+              <input id="station-minutes" type="number" min="0" max="180" step="5" value="60">
+            </label>
+            <div class="field range-field">
+              <span>计划出发时间 <strong id="departure-label">16:00</strong></span>
+              <input id="departure-slider" type="range" min="0" max="720" step="5" value="120" aria-label="计划出发时间距离发车 / 开始的时间">
+              <div class="range-meta"><span>最早</span><span>可用时间 <input class="available-time-input" id="available-minutes" type="number" min="5" max="720" step="5" value="120" inputmode="numeric" aria-label="自定义可用时间（分钟）"> 分钟</span><span>发车 / 开始</span></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel-section results-section">
+          <div class="section-label"><span>03</span><strong>风险读数</strong></div>
+          <div class="risk-hero">
+            <div>
+              <span class="result-label">风险指数</span>
+              <strong id="result-risk">--</strong>
+            </div>
+            <span class="risk-badge" id="risk-badge" data-level="unknown">等待路线</span>
+            <div class="risk-track"><span id="risk-fill"></span></div>
+          </div>
+          <div class="result-grid">
+            <div class="result-card primary">
+              <span>安全缓冲</span>
+              <strong id="result-buffer">--</strong>
+              <small>缓冲 ≥ 60 分钟时风险为 0</small>
+            </div>
+            <div class="result-card">
+              <span>最晚安全出发</span>
+              <strong id="result-latest">--:--</strong>
+              <small>已预留 60 分钟保险窗</small>
+            </div>
+            <div class="result-card">
+              <span>最快方案</span>
+              <strong id="result-fastest">待核对</strong>
+              <small>按已录入路线时间比较</small>
+            </div>
+            <div class="result-card">
+              <span>最稳方案</span>
+              <strong id="result-steadiest">待核对</strong>
+              <small>暂以较长路线时间保守估算</small>
+            </div>
+          </div>
+          <div class="route-warning" id="route-warning" data-type="warning"></div>
+          <div class="source-note">
+            <span>路线来源</span>
+            <p id="route-source">尚未选择交通方式</p>
+          </div>
+        </section>
+      </aside>
+    </main>
+
+    <footer class="footer">
+      <span>时间风险模型：缓冲 = 可用时间 − 路线时间 − 安全预留；风险只由计划时间差计算。</span>
+      <span>地图数据：高德地图或 © OpenStreetMap contributors · 风险模型不接入实时天气接口</span>
+      <span id="metrics" class="metrics">正在探测设备性能…</span>
+    </footer>
+  </div>
+
+  <noscript>此页面需要 JavaScript 才能运行水墨星云粒子与风险计算。</noscript>
+  <script src="vendor/maplibre-gl.js?v=48"></script>
+  <script src="data/config.js?v=48"></script>
+  <script src="data/routes.js?v=48"></script>
+  <script src="js/risk.js?v=48"></script>
+  <script src="js/flow-field.js?v=48"></script>
+  <script src="js/map.js?v=48"></script>
+  <script src="js/amap-map.js?v=48"></script>
+  <script src="js/particles.js?v=48"></script>
+  <script src="js/warm-ui.js?v=48"></script>
+  <script src="js/location-search.js?v=48"></script>
+  <script src="js/ui.js?v=48"></script>
+  <script src="js/app.js?v=48"></script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,10 @@
+﻿{
+  "name": "risk-tide-map",
+  "version": "1.0.0",
+  "private": true,
+  "description": "水墨星云互动风险地图：无锡学院到无锡东站",
+  "scripts": {
+    "start": "node serve.js",
+    "vendor": "node scripts/vendor-maplibre.js"
+  }
+}
