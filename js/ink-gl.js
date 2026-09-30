@@ -140,6 +140,7 @@
       this.texVel = gl.createTexture();
       this.resize();
       this.observeResize();
+      this.initDebug();
     }
 
     observeResize() {
@@ -336,6 +337,57 @@
       });
     }
 
+    /* Development overlay: open the page with ?debug=1. Self-contained so no
+       application code has to know about it. */
+    initDebug() {
+      if (!/debug=1/.test(global.location ? global.location.search : '')) return;
+      const el = document.createElement('div');
+      el.style.cssText = 'position:fixed;left:10px;bottom:10px;z-index:9999;'
+        + 'background:rgba(12,18,20,.82);color:#cfe8e4;font:11px/1.5 ui-monospace,Menlo,monospace;'
+        + 'padding:8px 10px;border-radius:8px;pointer-events:none;white-space:pre';
+      document.body.appendChild(el);
+      this.debugEl = el;
+      this.rafCount = 1;
+      this.debugTimer = 0;
+      this.inkCells = 0;
+    }
+
+    measureInkCells() {
+      /* cheap sim-side proxy for on-canvas coverage (a full-canvas readPixels
+         every second would hitch the frame) */
+      const gl = this.gl;
+      const w = this.simW, h = this.simH;
+      const fb = gl.createFramebuffer();
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.ping.tex, 0);
+      const b = new Uint8Array(4 * w * h);
+      gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, b);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.deleteFramebuffer(fb);
+      let n = 0;
+      for (let i = 3; i < b.length; i += 4) if (b[i] > 12) n += 1;
+      this.inkCells = n;
+    }
+
+    refreshDebug(dt) {
+      if (!this.debugEl) return;
+      this.debugTimer += dt;
+      if (this.debugTimer > 1) {
+        this.debugTimer = 0;
+        try { this.measureInkCells(); } catch (err) { this.inkCells = -1; }
+      }
+      const total = this.simW * this.simH || 1;
+      const est = Math.round(100 * this.inkCells / total);
+      this.debugEl.textContent =
+        'backend      ' + (this.failed ? 'cpu-fallback' : 'webgl2') + '\n'
+        + 'FPS          ' + Math.round(1000 / Math.max(1, this.frameAvg || 16.7)) + '\n'
+        + 'frameMs      ' + (this.frameAvg || 16.7).toFixed(1) + '\n'
+        + 'sim          ' + this.simW + 'x' + this.simH + '\n'
+        + 'quality      cell=' + this.cell + 'px  dpr=' + this.dpr + '\n'
+        + 'inkCells     ' + this.inkCells + '  (~' + est + '% of sim)\n'
+        + 'RAF          ' + this.rafCount;
+    }
+
     setVisible(v) { this.visible = !!v; this.lastTime = 0; }
     start() {
       if (this.failed || this.running) return;
@@ -362,6 +414,8 @@
       } catch (e) {
         if (global.console && console.warn) console.warn('InkFLuid frame skipped: ' + (e && e.message ? e.message : e));
       }
+      this.rafCount = (this.rafCount || 0) + 1;
+      this.refreshDebug(dt);
       global.requestAnimationFrame(this.frameBound);
     }
   }
