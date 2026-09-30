@@ -199,17 +199,17 @@
        points. See js/ink-flow.js. */
     inkFlow: {
       enabled: true,
-
-
-      speed: 46,            // px/s along the route at the core
+      grid: { desktop: 300, mobile: 200 },   // finer grid -> crisper core
+      influence: { radius: 14, coreRadius: 4.5 },  // thin stream, not a blob
+      speed: 74,            // px/s along the route at the core
       edgeShear: 0.35,      // edges lag the core -> stretching / shear
       curveSwirl: 0.55,     // rotational term at bends -> curl and vortices
-
-
-
+      diffusion: 0.026,     // barely spreads
+      decay: 0.992,         // slow drying
+      injection: 1.05,      // pigment fed in at the source
       warmBias: 0.24,       // second pigment field -> internal colour drift
       colourEaseMs: 280,
-      prewarmSteps: 150
+      prewarmSteps: 240
     },
 
     particleBudgets: {
