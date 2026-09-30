@@ -207,8 +207,8 @@
       speed: 60,
       decayIn: 0.45,                   // per second, inside the band
       decayOut: 2.6,                   // per second, outside -> dries fast
-      gamma: 1.35,                     // contrast curve, composite only
-      gain: 1.15,
+      gamma: 1.17,                     // contrast curve, composite only (from the density histogram)
+      gain: 1.95,                      // maps the median ink density to a visible 0.30 alpha
       injectBase: 0.35,                // low steady feed
       injectPulse: 1.1,                // travelling pigment pulse
       pulseHz: 0.11,                   // low frequency, no visible periodicity
