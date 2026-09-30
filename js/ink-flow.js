@@ -136,7 +136,7 @@
 
       const mobile = (global.innerWidth || 960) <= 760;
       const target = (this.config.grid && (mobile ? this.config.grid.mobile : this.config.grid.desktop)) || 168;
-      const cell = Math.max(5, Math.round(Math.max(w, h) / target));
+      const cell = Math.max(2, Math.round(Math.max(w, h) / target)); // was clamped to 5px, which made every finer grid setting a no-op
       const cols = Math.ceil(w / cell) + 2;
       const rows = Math.ceil(h / cell) + 2;
       if (cols === this.cols && rows === this.rows && cell === this.cell) return;
@@ -276,14 +276,14 @@
         const w = 1 - smoothstep(0, 0.22, along);
         const gx = Math.round(pts[i].x / this.cell);
         const gy = Math.round(pts[i].y / this.cell);
-        for (let oy = -2; oy <= 2; oy += 1) {
-          for (let ox = -2; ox <= 2; ox += 1) {
+        for (let oy = -1; oy <= 1; oy += 1) {
+          for (let ox = -1; ox <= 1; ox += 1) {
             const cx = gx + ox;
             const cy = gy + oy;
             if (cx < 0 || cy < 0 || cx >= this.cols || cy >= this.rows) continue;
             const idx = cy * this.cols + cx;
             const dd = Math.hypot(cx * this.cell - pts[i].x, cy * this.cell - pts[i].y);
-            const g = dd < 2.5 ? 1 : (dd < 9 ? 0.5 : 0.18);
+            const g = dd < 1.5 ? 1 : 0.4;
             const add = w * g + 0.05;              // 起点满注 + 沿途少量补墨
             if (add > this.source[idx]) this.source[idx] = add;
           }
@@ -425,7 +425,7 @@
         // density -> alpha, softly compressed so the core stays readable
         /* 浓度 -> 不透明度用对比曲线：核心迅速变实，边缘迅速变淡，
            这样墨体有"重量"，而不是一团均匀的雾。 */
-        data[p + 3] = Math.round(255 * clamp(Math.pow(Math.min(1.2, total), 1.35) * 0.95, 0, 0.88));
+        data[p + 3] = Math.round(255 * clamp(Math.pow(Math.min(1.15, total), 1.9) * 1.15, 0, 0.90));
       }
       this.offCtx.putImageData(this.imageData, 0, 0);
       ctx.clearRect(0, 0, this.width, this.height);
