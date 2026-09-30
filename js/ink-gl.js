@@ -63,7 +63,11 @@
        most of its mass, outside it dries out quickly (all dt-based) */
     float mask = texture(uVel, vUv).b;
     float rate = mix(uDecayOut, uDecayIn, mask);
-    p.a *= exp(-rate * uDt);
+    /* RGBA8 feedback has a quantisation dead zone: once a * exp(-rate*dt)
+       rounds back to the same 8-bit value the decay stalls forever, leaving a
+       permanent faint residue. Subtract a small epsilon so pigment always
+       reaches zero. */
+    p.a = max(0.0, p.a * exp(-rate * uDt) - 0.0007 * uDt * 60.0);
     outColor = p;
   }`;
 
@@ -248,6 +252,11 @@
 
     pass(prog, target, setup) {
       const gl = this.gl;
+      /* Simulation passes must OVERWRITE, never blend. Leaving GL_BLEND on
+         made every pass square the alpha (dst.a = src.a*src.a + ...), so
+         injected pigment decayed to zero every frame and the field never
+         accumulated. Only the display pass blends. */
+      if (target) gl.disable(gl.BLEND); else gl.enable(gl.BLEND);
       gl.bindFramebuffer(gl.FRAMEBUFFER, target ? target.fbo : null);
       gl.viewport(0, 0, target ? target.w : this.canvas.width, target ? target.h : this.canvas.height);
       gl.useProgram(prog);
@@ -272,7 +281,9 @@
         gl.uniform1i(u(p, 'uVel'), 1);
         gl.uniform1f(u(p, 'uDt'), dt);
         gl.uniform1f(u(p, 'uTime'), self.time);
-        gl.uniform1f(u(p, 'uBase'), self.config.injectBase === undefined ? 0.35 : self.config.injectBase);
+        /* injectionScale must gate the WHOLE feed, base included, or the
+           injection=0 gate test measures a steady state instead of decay. */
+        gl.uniform1f(u(p, 'uBase'), self.injectionScale * (self.config.injectBase === undefined ? 0.35 : self.config.injectBase));
         gl.uniform1f(u(p, 'uPulse'), self.injectionScale * (self.config.injectPulse === undefined ? 1.1 : self.config.injectPulse));
         gl.uniform1f(u(p, 'uPulseHz'), self.config.pulseHz === undefined ? 0.11 : self.config.pulseHz);
         gl.uniform1f(u(p, 'uWarmBias'), self.config.warmBias || 0.24);
