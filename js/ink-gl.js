@@ -29,12 +29,19 @@
   precision highp float;
   in vec2 vUv; out vec4 outColor;
   uniform sampler2D uPig; uniform sampler2D uVel;
-  uniform float uInject; uniform float uWarmBias;
+  uniform float uDt; uniform float uTime; uniform float uWarmBias;
+  uniform float uBase; uniform float uPulse; uniform float uPulseHz;
   void main(){
     vec4 p = texture(uPig, vUv);
-    vec3 v = texture(uVel, vUv).rgb;
-    float core = v.z;                       // 0..1 = how close to the route
-    float add = core * uInject;
+    vec4 v = texture(uVel, vUv);
+    float mask = v.b;                       // soft confinement mask
+    float along = v.a;                      // 0..1 along the route
+    /* low base feed + two incommensurate travelling pulses: pigment gathers,
+       is carried forward, dilutes, gathers again - and never repeats visibly */
+    float p1 = 0.5 + 0.5 * sin(6.28318 * (along - uTime * uPulseHz));
+    float p2 = 0.5 + 0.5 * sin(6.28318 * (along * 2.37 - uTime * uPulseHz * 0.61));
+    float feed = uBase + uPulse * p1 * p2;
+    float add = mask * feed * uDt;
     float warm = clamp(add * uWarmBias, 0.0, 1.0);
     p.r = p.r * p.a + warm * add;
     p.a = p.a + add;
@@ -46,13 +53,17 @@
   precision highp float;
   in vec2 vUv; out vec4 outColor;
   uniform sampler2D uPig; uniform sampler2D uVel;
-  uniform vec2 uStep; uniform float uDecay;
+  uniform vec2 uStep; uniform float uDt; uniform float uDecayIn; uniform float uDecayOut;
   void main(){
     vec2 vel = texture(uVel, vUv).xy * 2.0 - 1.0;   // decode
     /* one step = speed*dt in UV units, so the displacement is real pixels */
     vec2 back = vUv - vel * uStep;                  // back-trace
     vec4 p = texture(uPig, back);
-    p.a *= uDecay;
+    /* soft confinement through decay, not clipping: inside the band ink keeps
+       most of its mass, outside it dries out quickly (all dt-based) */
+    float mask = texture(uVel, vUv).b;
+    float rate = mix(uDecayOut, uDecayIn, mask);
+    p.a *= exp(-rate * uDt);
     outColor = p;
   }`;
 
@@ -60,11 +71,11 @@
   precision highp float;
   in vec2 vUv; out vec4 outColor;
   uniform sampler2D uPig; uniform vec3 uCool; uniform vec3 uWarm;
-  uniform float uAlpha;
+  uniform float uAlpha; uniform float uGain; uniform float uGamma;
   void main(){
     vec4 p = texture(uPig, vUv);
-    float d = clamp(p.a, 0.0, 1.0);
-    float a = pow(d, 1.5) * uAlpha;          // contrasty: solid core, vanishing rim
+    float d = clamp(p.a * uGain, 0.0, 1.0);
+    float a = pow(d, uGamma) * uAlpha;       // dense core -> translucent body -> soft wet edge
     vec3 col = mix(uWarm, uCool, clamp(p.r, 0.0, 1.0));
     outColor = vec4(col, a);
   }`;
@@ -103,6 +114,8 @@
       this.lastTime = 0;
       this.risk = 0;
       this.riskTarget = 0;
+      this.time = 0;
+      this.injectionScale = 1;   // set to 0 to run the injection=0 gate test
       this.colour = [0, 124, 108];
       this.width = 1; this.height = 1;
       const opts = { alpha: true, premultipliedAlpha: false, antialias: false, depth: false, stencil: false, preserveDrawingBuffer: false };
@@ -192,6 +205,14 @@
         const pts = this.map.getScreenPath(coords, this.route && this.route.coordinateSystem);
         const clean = pts.filter(function (p) { return p && Number.isFinite(p.x) && Number.isFinite(p.y); });
         const rPx = (this.config.influence && this.config.influence.radius) || 14;
+        const m0 = (this.config.mask && this.config.mask.inner) || 7;
+        const m1 = (this.config.mask && this.config.mask.outer) || 20;
+        /* soft pigment confinement: 1 inside the core band, easing to 0 at the
+           outer edge - no hard clip, no visible pipe. */
+        const maskAt = function (d) {
+          const t = Math.max(0, Math.min(1, (d - m0) / Math.max(0.001, m1 - m0)));
+          return 1 - (t * t * (3 - 2 * t));
+        };
         for (let y = 0; y < h; y += 1) {
           for (let x = 0; x < w; x += 1) {
             const sx = (x / w) * this.width;
@@ -210,7 +231,8 @@
             tx /= len; ty /= len;
             data[o] = Math.round((tx * 0.5 + 0.5) * 255);
             data[o + 1] = Math.round((ty * 0.5 + 0.5) * 255);
-            data[o + 2] = Math.round(255 * Math.max(0, 1 - bestD / rPx));
+            data[o + 2] = Math.round(255 * maskAt(bestD));
+            data[o + 3] = Math.round(255 * (best / Math.max(1, clean.length - 1)));
           }
         }
       }
@@ -248,7 +270,11 @@
         gl.uniform1i(u(p, 'uPig'), 0);
         gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, self.texVel);
         gl.uniform1i(u(p, 'uVel'), 1);
-        gl.uniform1f(u(p, 'uInject'), (self.config.injection || 1.0) * dt * 3.0);
+        gl.uniform1f(u(p, 'uDt'), dt);
+        gl.uniform1f(u(p, 'uTime'), self.time);
+        gl.uniform1f(u(p, 'uBase'), self.config.injectBase === undefined ? 0.35 : self.config.injectBase);
+        gl.uniform1f(u(p, 'uPulse'), self.injectionScale * (self.config.injectPulse === undefined ? 1.1 : self.config.injectPulse));
+        gl.uniform1f(u(p, 'uPulseHz'), self.config.pulseHz === undefined ? 0.11 : self.config.pulseHz);
         gl.uniform1f(u(p, 'uWarmBias'), self.config.warmBias || 0.24);
       });
       const tmp = self.ping; self.ping = self.pong; self.pong = tmp;
@@ -260,7 +286,9 @@
         gl.uniform1i(u(p, 'uVel'), 1);
         const spd = (self.config.speed || 60) * dt;
         gl.uniform2f(u(p, 'uStep'), spd / self.width, spd / self.height);
-        gl.uniform1f(u(p, 'uDecay'), self.config.decay || 0.99);
+        gl.uniform1f(u(p, 'uDt'), dt);
+        gl.uniform1f(u(p, 'uDecayIn'), self.config.decayIn === undefined ? 0.45 : self.config.decayIn);
+        gl.uniform1f(u(p, 'uDecayOut'), self.config.decayOut === undefined ? 2.6 : self.config.decayOut);
       });
       const tmp2 = self.ping; self.ping = self.pong; self.pong = tmp2;
     }
@@ -292,6 +320,8 @@
         gl.uniform3f(u('uCool'), cool[0] / 255, cool[1] / 255, cool[2] / 255);
         gl.uniform3f(u('uWarm'), warm[0] / 255, warm[1] / 255, warm[2] / 255);
         gl.uniform1f(u('uAlpha'), m ? 0.72 : 0.94);
+        gl.uniform1f(u('uGain'), self.config.gain === undefined ? 1.15 : self.config.gain);
+        gl.uniform1f(u('uGamma'), self.config.gamma === undefined ? 1.35 : self.config.gamma);
       });
     }
 
@@ -311,6 +341,7 @@
       const dt = this.lastTime ? Math.min((ts - this.lastTime) / 1000, 0.032) : 0.016;
       this.lastTime = ts;
       this.frameAvg = this.frameAvg ? this.frameAvg + (dt * 1000 - this.frameAvg) * 0.05 : dt * 1000;
+      this.time += dt;
       try {
         if (this.visible) {
           if (this.routeDirty) this.uploadVelocity();

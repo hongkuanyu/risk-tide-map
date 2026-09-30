@@ -202,10 +202,16 @@
     inkGL: {
       enabled: false,
       sim: 256,
-      influence: { radius: 14 },
+      influence: { radius: 22 },
+      mask: { inner: 7, outer: 20 },   // soft pigment confinement band (px)
       speed: 60,
-      decay: 0.99,
-      injection: 1.0,
+      decayIn: 0.45,                   // per second, inside the band
+      decayOut: 2.6,                   // per second, outside -> dries fast
+      gamma: 1.35,                     // contrast curve, composite only
+      gain: 1.15,
+      injectBase: 0.35,                // low steady feed
+      injectPulse: 1.1,                // travelling pigment pulse
+      pulseHz: 0.11,                   // low frequency, no visible periodicity
       warmBias: 0.24
     },
 
