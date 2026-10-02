@@ -241,10 +241,12 @@
             let tx = b.x - a.x, ty = b.y - a.y;
             const len = Math.hypot(tx, ty) || 1;
             tx /= len; ty /= len;
-            data[o] = Math.round((tx * 0.5 + 0.5) * 255);
-            data[o + 1] = Math.round((ty * 0.5 + 0.5) * 255);
+            /* destination -> origin: negate the tangent (route is O->D) */
+            data[o] = Math.round((-tx * 0.5 + 0.5) * 255);
+            data[o + 1] = Math.round((-ty * 0.5 + 0.5) * 255);
             data[o + 2] = Math.round(255 * maskAt(bestD));
-            data[o + 3] = Math.round(255 * (best / Math.max(1, clean.length - 1)));
+            /* along = 0 at the destination so injection starts there */
+            data[o + 3] = Math.round(255 * (1 - best / Math.max(1, clean.length - 1)));
           }
         }
       }

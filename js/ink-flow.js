@@ -283,8 +283,10 @@
           const rot = swirl * curv[best] * 8 * lateral;
           const nx = -ty[best];
           const ny = tx[best];
-          this.vx[idx] = (tx[best] * local + nx * rot) * speed;
-          this.vy[idx] = (ty[best] * local + ny * rot) * speed;
+          /* flow runs from the destination back to the origin, so the
+             tangent is negated (the route array is origin -> destination) */
+          this.vx[idx] = (-tx[best] * local + nx * rot) * speed;
+          this.vy[idx] = (-ty[best] * local + ny * rot) * speed;
         }
       }
 
@@ -292,7 +294,9 @@
          along the rest so the stream never dries out completely. */
       for (let i = 0; i < n; i += 1) {
         const along = i / (n - 1);
-        const w = 1 - smoothstep(0, 0.22, along);
+        /* inject at the far end: 'along' is measured from the origin, so the
+           destination is along = 1 */
+        const w = 1 - smoothstep(0, 0.22, 1 - along);
         const gx = Math.round(pts[i].x / this.cell);
         const gy = Math.round(pts[i].y / this.cell);
         for (let oy = -1; oy <= 1; oy += 1) {

@@ -204,7 +204,7 @@
       sim: 256,
       influence: { radius: 22 },
       mask: { inner: 7, outer: 20 },   // soft pigment confinement band (px)
-      speed: 60,
+      speed: 112,
       decayIn: 0.45,                   // per second, inside the band
       decayOut: 2.6,                   // per second, outside -> dries fast
       gamma: 1.17,                     // contrast curve, composite only (from the density histogram)
@@ -219,7 +219,7 @@
       enabled: true,
       grid: { desktop: 300, mobile: 200 },   // finer grid -> crisper core
       influence: { radius: 8, coreRadius: 2.5 },  // thin stream, not a blob
-      speed: 108,            // px/s along the route at the core
+      speed: 132,            // px/s along the route at the core
       edgeShear: 0.35,      // edges lag the core -> stretching / shear
       curveSwirl: 0.55,     // rotational term at bends -> curl and vortices
       diffusion: 0.008,     // barely spreads
