@@ -75,13 +75,34 @@
     setData(rows) { this.rows = (rows || []).filter(function (r) { return r && r.city && r.risk !== null; }); }
 
     /* 把经纬度投影到画布（复用地图控制器，和路线渲染器同一套投影） */
+    /* 等距圆柱投影：把中国范围直接映射进画布。
+       用途有二：地图控制器给不出合理坐标时兜底（例如降级底图只覆盖无锡），
+       以及本地无法使用高德时的可验证路径。 */
+    flatProject(coord) {
+      const ink = (config.nation && config.nation.ink) || {};
+      const b = ink.bounds || [73, 18, 136, 54];
+      const pad = ink.pad === undefined ? 0.06 : ink.pad;
+      const x = (coord[0] - b[0]) / (b[2] - b[0]);
+      const y = 1 - (coord[1] - b[1]) / (b[3] - b[1]);
+      return {
+        x: this.width * (pad + clamp(x, 0, 1) * (1 - 2 * pad)),
+        y: this.height * (pad + clamp(y, 0, 1) * (1 - 2 * pad))
+      };
+    }
+
     projectCity(city) {
-      if (this.map && typeof this.map.getScreenPath === 'function') {
+      const ink = (config.nation && config.nation.ink) || {};
+      if (ink.projection !== 'flat' && this.map && typeof this.map.getScreenPath === 'function') {
         const p = this.map.getScreenPath([city.coordinate])[0];
-        if (p && Number.isFinite(p.x)) return p;
+        /* 只有落在画布附近才采信地图投影；否则退到等距投影，
+           避免降级底图把城市投到画布外几十万像素处。 */
+        if (p && Number.isFinite(p.x) && Number.isFinite(p.y)
+            && p.x > -this.width * 0.5 && p.x < this.width * 1.5
+            && p.y > -this.height * 0.5 && p.y < this.height * 1.5) {
+          return p;
+        }
       }
-      if (this.map && typeof this.map.project === 'function') return this.map.project(city.coordinate);
-      return null;
+      return this.flatProject(city.coordinate);
     }
 
     radiusFor(risk, tier, viewScale) {

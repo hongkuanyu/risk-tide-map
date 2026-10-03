@@ -212,7 +212,10 @@
         maxBounds: [[72, 14], [138, 55]],
         amapZoom: 4.4
       },
-      ink: { radiusMin: 5, radiusMax: 44, alphaMin: 0.10, alphaMax: 0.78, viewScale: 1 }
+      ink: { radiusMin: 5, radiusMax: 44, alphaMin: 0.10, alphaMax: 0.78, viewScale: 1,
+             projection: 'auto',           // 'auto' | 'flat'
+             bounds: [73, 18, 136, 54],     // 等距投影用的中国范围
+             pad: 0.06 }
     },
 
     /* ---- V6 · InkFlowRenderer ------------------------------------------
