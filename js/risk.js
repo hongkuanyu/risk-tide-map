@@ -1,4 +1,4 @@
-﻿/* global window */
+/* global window */
 (function (global) {
   'use strict';
 
@@ -55,12 +55,13 @@
 
   function riskLabel(risk) {
     const level = riskLevel(risk);
+    /* 措辞对应"时间余量"而不是"迟到概率"，避免被读成 73% 会迟到 */
     return {
-      safe: '安全流动',
-      critical: '临界加速',
-      danger: '高风险',
-      storm: '赤墨风暴',
-      unknown: '等待路线'
+      safe: '宽裕',
+      critical: '注意',
+      danger: '很紧',
+      storm: '可能迟到',
+      unknown: '待设定'
     }[level];
   }
 

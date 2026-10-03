@@ -47,6 +47,8 @@
         buffer: document.getElementById('result-buffer'),
         risk: document.getElementById('result-risk'),
         latest: document.getElementById('result-latest'),
+        heroLatest: document.getElementById('hero-latest'),
+        heroBuffer: document.getElementById('hero-buffer'),
         fastest: document.getElementById('result-fastest'),
         steadiest: document.getElementById('result-steadiest'),
         riskFill: document.getElementById('risk-fill'),
@@ -277,6 +279,16 @@
       this.elements.buffer.textContent = result.valid ? (result.bufferMinutes > 0 ? '+' : '') + Math.round(result.bufferMinutes) + ' 分钟' : '--';
       this.elements.risk.textContent = result.valid ? Math.round(result.risk) + ' / 100' : '--';
       this.elements.latest.textContent = result.valid ? result.latestDepartureTime : '--:--';
+      /* 首屏答案：用户真正要知道的是「什么时候必须出发」 */
+      if (this.elements.heroLatest) {
+        this.elements.heroLatest.textContent = result.valid ? result.latestDepartureTime : '--:--';
+      }
+      if (this.elements.heroBuffer) {
+        const buf = result.valid ? Math.round(result.bufferMinutes) : null;
+        this.elements.heroBuffer.textContent = buf === null
+          ? '设定一次行程，观察时间如何逼近'
+          : (buf >= 0 ? '剩余安全余量 ' + buf + ' 分钟' : '已经超出安全余量 ' + Math.abs(buf) + ' 分钟');
+      }
 
       const routeMapForCompare = Object.assign({}, this.routeMap);
       if (this.state.mode && this.state.routeMinutes) {

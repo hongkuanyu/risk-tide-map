@@ -735,6 +735,11 @@ button:disabled, input:disabled { opacity: 0.55; cursor: not-allowed; }
 .range-meta b { color: var(--ink-soft); font-weight: 500; }
 
 /* ---------- results ---------- */
+/* 首屏答案：比风险指数更醒目 —— 用户要知道的是「几点必须出发」 */
+.hero-answer { display: grid; gap: 2px; margin: 2px 0 10px; }
+.hero-label { color: var(--ink-faint); font-size: 11.5px; letter-spacing: 0.14em; }
+.hero-answer strong { font-size: 46px; font-weight: 500; line-height: 1.02; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; color: var(--ink); }
+.hero-answer small { color: var(--ink-soft); font-size: 12px; }
 .results-section { padding-top: 4px; border-top: 1px solid var(--line); }
 
 .risk-hero {
@@ -751,7 +756,7 @@ button:disabled, input:disabled { opacity: 0.55; cursor: not-allowed; }
   display: block;
   margin-top: 2px;
   color: var(--live);
-  font-size: 34px;
+  font-size: 19px;
   font-weight: 500;
   line-height: 1.1;
   font-variant-numeric: tabular-nums;
