@@ -26,7 +26,10 @@
   function createApp() {
     /* 全国模式：在创建地图控制器之前套用全国视野（覆盖 center/zoom/maxBounds），
        这样锁死无锡的 maxBounds 不会把 43 座城市挡在画布外。 */
-    const nationOn = !!(config.nation && config.nation.enabled);
+    /* 全国模式是可选预览：默认保持已验证的单路线墨流，
+       用 ?nation=1 打开全国版做对比与调试；config.nation.enabled 仍可强制打开。 */
+    const nationOn = !!(config.nation && config.nation.enabled)
+      || /[?&]nation=1/.test(global.location ? global.location.search : '');
     if (nationOn && config.nation.map) {
       const nm = config.nation.map;
       config.map.center = nm.center;
