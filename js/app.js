@@ -37,13 +37,35 @@
     /* One slot, two backends. They expose the same API, so every call site
        below is backend-agnostic and the WebGL2 path can be adopted (or rolled
        back) by flipping config.inkGL.enabled. */
+    /* 全国墨迹与单路线墨流二选一：nation 开启时不启动单路线渲染器 */
+    const nationOn = !!(config.nation && config.nation.enabled);
+    const nationCanvas = document.getElementById('nation-canvas');
+    const nationInk = (nationOn && global.RiskTideNationInk && nationCanvas)
+      ? new global.RiskTideNationInk(nationCanvas, mapController) : null;
+
+    if (nationInk && shell) shell.dataset.nation = 'on';
+
+    function refreshNation() {
+      if (!nationInk) return;
+      const state = ui.getState();
+      const eps = (mapController.getEndpoints && mapController.getEndpoints()) || config.endpoints;
+      const origin = (eps.campus && eps.campus.coordinate) || config.endpoints.campus.coordinate;
+      nationInk.setData(global.RiskTideNationRisk.computeAll(global.RiskTideCities.list, origin, {
+        trainTime: state.trainTime,
+        departureTime: state.departureTime,
+        stationMinutes: state.stationMinutes,
+        safeBufferMinutes: config.risk.safeBufferMinutes,
+        mode: (config.nation && config.nation.mode) || 'rail'
+      }));
+    }
+
     const inkGL = (config.inkGL && config.inkGL.enabled && global.RiskTideInkGL && silkCanvas)
       ? new global.RiskTideInkGL(silkCanvas, mapController)
       : null;
-    const inkFlow = (inkGL && !inkGL.failed) ? inkGL
+    const inkFlow = nationOn ? null : ((inkGL && !inkGL.failed) ? inkGL
       : ((config.inkFlow && config.inkFlow.enabled && global.RiskTideInkFlow && silkCanvas)
         ? new global.RiskTideInkFlow(silkCanvas, mapController)
-        : null);
+        : null));
     const ui = new global.RiskTideUI(global.routes);
 
     /* The ink-map palette lives in data/config.js; publish it to CSS so the

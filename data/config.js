@@ -195,6 +195,16 @@
       reducedMotionScale: 0.32
     },
 
+    /* ---- 全国墨迹 ------------------------------------------------------
+       enabled = false 时完全不启动，页面保持现有的单路线墨流；
+       改成 true 则关闭单路线墨流，改由 43 座城市的墨团表达风险。
+       行程时间来自 js/nation-risk.js 的直线距离示意模型，不是真实时刻表。 */
+    nation: {
+      enabled: false,
+      mode: 'rail',            // 'rail' | 'drive'
+      ink: { radiusMin: 5, radiusMax: 44, alphaMin: 0.10, alphaMax: 0.78, viewScale: 1 }
+    },
+
     /* ---- V6 · InkFlowRenderer ------------------------------------------
        The route is a persistent ink body pushed through a velocity field:
        advection -> diffusion -> decay -> injection. No lines, no moving
