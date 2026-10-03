@@ -46,6 +46,9 @@
     el.slider.value = String(preset.offset);
     fire(el.train, 'input');
     fire(el.station, 'input');
+    /* station 事件会触发 ui.update() -> syncDeparture()，按 state 里仍是旧值的
+       偏移把滑块写回，覆盖掉上面设的预设值。所以必须在 fire 之前重设一次。 */
+    el.slider.value = String(preset.offset);
     fire(el.slider, 'input');
     if (/[?&]debug=1/.test(location.search)) {
       var _ui = global.RiskTideApp && global.RiskTideApp.ui;
