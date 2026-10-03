@@ -78,6 +78,9 @@
 
     var applied = false;
     function applyDefault() {
+      if (/[?&]debug=1/.test(location.search)) {
+        console.log('[warm-ui] applyDefault App=', !!global.RiskTideApp, 'slider=', el.slider && el.slider.value, 'offset=', scenarios.train.offset);
+      }
       if (applied || !global.RiskTideApp || !global.RiskTideApp.ui) return;
       applied = true;
       applyScenario(el, 'train');
@@ -87,7 +90,8 @@
       applyDefault();
       if (applied) global.clearInterval(timer);
     }, 120);
-    global.setTimeout(function () { global.clearInterval(timer); }, 8000);
+    /* 8 秒对于首屏初始化较慢的环境（地图/路线/投影）不够，预设会整段丢失 */
+    global.setTimeout(function () { global.clearInterval(timer); }, 30000);
   }
 
   if (document.readyState === 'loading') {
