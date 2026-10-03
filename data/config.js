@@ -200,17 +200,17 @@
        改成 true 则关闭单路线墨流，改由 43 座城市的墨团表达风险。
        行程时间来自 js/nation-risk.js 的直线距离示意模型，不是真实时刻表。 */
     nation: {
-      enabled: false,
+      enabled: true,
       mode: 'rail',            // 'rail' | 'drive'
       /* 全国视野：仅在 nation.enabled = true 时覆盖 config.map / amap.zoom，
          关闭时地图仍锁在无锡（现有行为不变）。 */
       map: {
-        center: [109.5, 33.5],
-        zoom: 4.2,
+        center: [104.5, 35.5],
+        zoom: 3.4,
         minZoom: 3.2,
         maxZoom: 16.5,
         maxBounds: [[72, 14], [138, 55]],
-        amapZoom: 4.4
+        amapZoom: 3.6
       },
       /* 低风险也要看得见：最小半径 8px、最小浓度 0.17，保证整张图都有墨，只是浓淡不同。 */
       ink: { radiusMin: 8, radiusMax: 46, alphaMin: 0.17, alphaMax: 0.80, viewScale: 1,
