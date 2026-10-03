@@ -24,6 +24,19 @@
   }
 
   function createApp() {
+    /* 全国模式：在创建地图控制器之前套用全国视野（覆盖 center/zoom/maxBounds），
+       这样锁死无锡的 maxBounds 不会把 43 座城市挡在画布外。 */
+    const nationOn = !!(config.nation && config.nation.enabled);
+    if (nationOn && config.nation.map) {
+      const nm = config.nation.map;
+      config.map.center = nm.center;
+      config.map.zoom = nm.zoom;
+      config.map.minZoom = nm.minZoom;
+      config.map.maxZoom = nm.maxZoom;
+      config.map.maxBounds = nm.maxBounds;
+      if (config.amap) config.amap.zoom = nm.amapZoom;
+    }
+
     const useAmap = !!(config.amap && config.amap.enabled && config.amap.key && global.RiskTideAmapMap);
     const amapMissingKey = !!(config.amap && config.amap.enabled && !config.amap.key);
     const mapController = useAmap ? new global.RiskTideAmapMap() : new global.RiskTideMap();
@@ -38,7 +51,6 @@
        below is backend-agnostic and the WebGL2 path can be adopted (or rolled
        back) by flipping config.inkGL.enabled. */
     /* 全国墨迹与单路线墨流二选一：nation 开启时不启动单路线渲染器 */
-    const nationOn = !!(config.nation && config.nation.enabled);
     const nationCanvas = document.getElementById('nation-canvas');
     const nationInk = (nationOn && global.RiskTideNationInk && nationCanvas)
       ? new global.RiskTideNationInk(nationCanvas, mapController) : null;
@@ -115,6 +127,7 @@
         safeBufferMinutes: config.risk.safeBufferMinutes
       });
       latestResult = result;
+      refreshNation();
 
       const routeKey = state.mode ? state.mode + ':' + (state.variantId || 'default') : 'none';
       if (routeKey !== lastRouteKey) {
@@ -348,6 +361,7 @@
       particles: particles,
       silk: silk,
       inkFlow: inkFlow,
+      nationInk: nationInk,
       ui: ui,
       result: function () { return latestResult; }
     };

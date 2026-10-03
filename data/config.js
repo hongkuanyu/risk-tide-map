@@ -202,6 +202,16 @@
     nation: {
       enabled: false,
       mode: 'rail',            // 'rail' | 'drive'
+      /* 全国视野：仅在 nation.enabled = true 时覆盖 config.map / amap.zoom，
+         关闭时地图仍锁在无锡（现有行为不变）。 */
+      map: {
+        center: [109.5, 33.5],
+        zoom: 4.2,
+        minZoom: 3.2,
+        maxZoom: 16.5,
+        maxBounds: [[72, 14], [138, 55]],
+        amapZoom: 4.4
+      },
       ink: { radiusMin: 5, radiusMax: 44, alphaMin: 0.10, alphaMax: 0.78, viewScale: 1 }
     },
 
