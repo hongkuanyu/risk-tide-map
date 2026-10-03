@@ -147,14 +147,16 @@
       envelope: 0.22,                             // strands converge at both ends
       /* 飞白 / 断墨: dash pattern per strand, in px */
       dash: { minRun: 40, maxRun: 140, minGap: 3, maxGap: 15, brokenShare: 0.34 },
+      /* 墨色浓度即风险：淡墨 -> 灰墨 -> 浓墨 -> 焦墨，
+         只有在最高的约 8% 区间才让焦墨里透出一点朱砂。
+         不做 绿→黄→橙→红 的 Dashboard 色阶。 */
       riskRamp: [
-        { at: 0.00, rgb: [0, 124, 108] },   // 青碧 / 孔雀青
-        { at: 0.27, rgb: [15, 137, 105] },  // 青绿
-        { at: 0.46, rgb: [188, 151, 34] },  // 金
-        { at: 0.61, rgb: [224, 137, 19] },  // 金橙
-        { at: 0.77, rgb: [229, 82, 16] },   // 橙朱
-        { at: 0.90, rgb: [215, 49, 23] },   // 朱砂
-        { at: 1.00, rgb: [181, 25, 25] }    // 深朱红
+        { at: 0.00, rgb: [150, 158, 155] },  // 淡墨
+        { at: 0.28, rgb: [116, 126, 124] },  // 灰墨
+        { at: 0.52, rgb: [78, 88, 88] },     // 浓墨
+        { at: 0.78, rgb: [40, 47, 48] },     // 焦墨
+        { at: 0.92, rgb: [32, 36, 37] },     // 焦墨（平台，避免过早泛红）
+        { at: 1.00, rgb: [104, 34, 29] }     // 焦墨 + 少量朱砂
       ],
       colourEaseMs: 280,                          // temporal easing on risk
       flowSpeed: 34,                              // px per second along the route
