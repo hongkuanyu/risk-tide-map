@@ -218,7 +218,19 @@
        route, metrics) keeps working, and flipping the flag restores it. */
     const particleTideEnabled = !(config.tide && config.tide.enabled === false);
     if (particleTideEnabled) {
-      particles.start();
+      /* 全国视图需要一个更长的默认时间窗：否则 43 城在同一时刻全部顶到最高风险，
+       看不到随时间推进的墨色梯度。这里直接写 UI 状态，避免依赖预设的事件派发。 */
+    if (nationOn && config.nation && config.nation.defaultWindowMinutes) {
+      const target = Number(config.nation.defaultWindowMinutes);
+      if (Number.isFinite(target) && target > 0) {
+        ui.state.departureOffset = Math.min(720, Math.max(5, Math.round(target)));
+        ui.state.departureTime = riskModel.addMinutes(ui.state.trainTime, -ui.state.departureOffset);
+        ui.update();
+        applyState(ui.getState());
+      }
+    }
+
+    particles.start();
       // Risk Tide V2 pointer layer: hover wake, click ripple, route resonance.
       // All three are visual-only and reuse the existing animation loop.
       particles.bindPointer(document.getElementById('map-shell'));

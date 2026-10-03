@@ -1,11 +1,11 @@
-﻿/* Warm-paper scenario presets + topbar departure sync.
+/* Warm-paper scenario presets + topbar departure sync.
    This add-on only writes into the existing UI inputs and dispatches their
    native events, so the original risk / map / particle pipeline stays intact. */
 (function (global) {
   'use strict';
 
   var scenarios = {
-    train:     { label: '赶高铁', trainTime: '18:00', station: 60, offset: 120, note: '按高铁 18:00 出发' },
+    train:     { label: '赶高铁', trainTime: '18:00', station: 60, offset: 480, note: '按高铁 18:00 出发 · 全国视图默认 8 小时窗' },
     flight:    { label: '赶飞机', trainTime: '16:30', station: 120, offset: 100, note: '按航班 16:30 出发' },
     exam:      { label: '考试',   trainTime: '09:00', station: 30, offset: 90, note: '按考试 09:00 开始' },
     interview: { label: '面试',   trainTime: '10:00', station: 30, offset: 90, note: '按面试 10:00 开始' },

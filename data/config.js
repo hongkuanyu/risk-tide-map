@@ -202,6 +202,7 @@
     nation: {
       enabled: true,
       mode: 'rail',            // 'rail' | 'drive'
+      defaultWindowMinutes: 480,     // 全国视图默认 8 小时窗，否则 43 城全顶到最高风险
       /* 全国视野：仅在 nation.enabled = true 时覆盖 config.map / amap.zoom，
          关闭时地图仍锁在无锡（现有行为不变）。 */
       map: {
