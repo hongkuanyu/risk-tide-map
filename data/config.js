@@ -200,7 +200,7 @@
        改成 true 则关闭单路线墨流，改由 43 座城市的墨团表达风险。
        行程时间来自 js/nation-risk.js 的直线距离示意模型，不是真实时刻表。 */
     nation: {
-      enabled: false,
+      enabled: true,
       mode: 'rail',            // 'rail' | 'drive'
       defaultWindowMinutes: 480,     // 全国视图默认 8 小时窗，否则 43 城全顶到最高风险
       /* 全国视野：仅在 nation.enabled = true 时覆盖 config.map / amap.zoom，
