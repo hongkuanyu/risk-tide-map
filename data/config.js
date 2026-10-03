@@ -212,7 +212,8 @@
         maxBounds: [[72, 14], [138, 55]],
         amapZoom: 4.4
       },
-      ink: { radiusMin: 5, radiusMax: 44, alphaMin: 0.10, alphaMax: 0.78, viewScale: 1,
+      /* 低风险也要看得见：最小半径 8px、最小浓度 0.17，保证整张图都有墨，只是浓淡不同。 */
+      ink: { radiusMin: 8, radiusMax: 46, alphaMin: 0.17, alphaMax: 0.80, viewScale: 1,
              projection: 'auto',           // 'auto' | 'flat'
              bounds: [73, 18, 136, 54],     // 等距投影用的中国范围
              pad: 0.06 }

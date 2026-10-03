@@ -172,6 +172,18 @@
       },
       onStatus: function (status) {
         if (status.state === 'ready') {
+          /* 只覆盖配置对象不够：地图初始化后仍会按自己的 maxBounds 收敛视野，
+             所以在 ready 之后显式再设一次全国视野。 */
+          if (nationOn && mapController.map && config.nation && config.nation.map) {
+            const nm = config.nation.map;
+            try {
+              if (typeof mapController.map.setZoomAndCenter === 'function') {
+                mapController.map.setZoomAndCenter(nm.amapZoom, nm.center);
+              } else if (typeof mapController.map.jumpTo === 'function') {
+                mapController.map.jumpTo({ center: nm.center, zoom: nm.zoom });
+              }
+            } catch (e) { }
+          }
           particles.resize();
           particles.routeDirty = true;
           if (silk) { silk.resize(); silk.routeDirty = true; }
