@@ -5,7 +5,7 @@
   'use strict';
 
   var scenarios = {
-    train:     { label: '赶高铁', trainTime: '18:00', station: 60, offset: 480, note: '按高铁 18:00 出发 · 全国视图默认 8 小时窗' },
+    train:     { label: '赶高铁', trainTime: '18:00', station: 60, offset: 120, note: '按高铁 18:00 出发' },
     flight:    { label: '赶飞机', trainTime: '16:30', station: 120, offset: 100, note: '按航班 16:30 出发' },
     exam:      { label: '考试',   trainTime: '09:00', station: 30, offset: 90, note: '按考试 09:00 开始' },
     interview: { label: '面试',   trainTime: '10:00', station: 30, offset: 90, note: '按面试 10:00 开始' },
@@ -36,6 +36,15 @@
 
   function applyScenario(el, key) {
     var preset = scenarios[key];
+    /* 默认时间窗随模式走：单路线 2 小时够用，
+       全国视图必须 8 小时，否则 43 城全部顶到最高风险、看不到梯度。 */
+    var offset = preset ? preset.offset : null;
+    var cfg = global.RiskTideConfig;
+    var nationMode = !!(cfg && cfg.nation
+      && (cfg.nation.enabled || /[?&]nation=1/.test(location.search)));
+    if (nationMode && cfg.nation.defaultWindowMinutes) {
+      offset = cfg.nation.defaultWindowMinutes;
+    }
     if (!preset || key === 'custom') {
       markActive(el, key);
       if (el.note) el.note.textContent = preset ? preset.note : '';
@@ -43,12 +52,12 @@
     }
     el.train.value = preset.trainTime;
     el.station.value = String(preset.station);
-    el.slider.value = String(preset.offset);
+    el.slider.value = String(offset);
     fire(el.train, 'input');
     fire(el.station, 'input');
     /* station 事件会触发 ui.update() -> syncDeparture()，按 state 里仍是旧值的
        偏移把滑块写回，覆盖掉上面设的预设值。所以必须在 fire 之前重设一次。 */
-    el.slider.value = String(preset.offset);
+    el.slider.value = String(offset);
     fire(el.slider, 'input');
     if (/[?&]debug=1/.test(location.search)) {
       var _ui = global.RiskTideApp && global.RiskTideApp.ui;
