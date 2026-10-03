@@ -50,6 +50,7 @@
       this.boundFrame = this.frame.bind(this);
       this.resize();
       this.observeResize();
+      this.initDebug();
     }
 
     observeResize() {
@@ -185,6 +186,35 @@
         painted += 1;
       }
       this.painted = painted;
+      this.refreshDebug();
+    }
+
+    /* ?debug=1 时把渲染指标写在页面上，便于线上无法注入脚本时截图定案 */
+    initDebug() {
+      if (!/[?&]debug=1/.test(global.location ? global.location.search : '')) return;
+      const el = document.createElement('div');
+      el.style.cssText = 'position:fixed;left:10px;bottom:10px;z-index:9999;background:rgba(12,18,20,.84);color:#cfe8e4;font:11px/1.5 ui-monospace,Menlo,monospace;padding:8px 10px;border-radius:8px;pointer-events:none;white-space:pre';
+      document.body.appendChild(el);
+      this.debugEl = el;
+    }
+
+    refreshDebug() {
+      if (!this.debugEl) return;
+      let inside = 0, skipped = 0;
+      const self = this;
+      this.rows.forEach(function (row) {
+        const pt = self.projectCity(row.city);
+        if (!pt) { skipped += 1; return; }
+        const rr = self.radiusFor(row.risk, row.city.tier, 1);
+        if (pt.x < -rr * 2 || pt.y < -rr * 2 || pt.x > self.width + rr * 2 || pt.y > self.height + rr * 2) skipped += 1;
+        else inside += 1;
+      });
+      this.debugEl.textContent = 'nation-ink'
+        + '\ncities   ' + this.rows.length
+        + '\nonCanvas ' + inside + '  skipped ' + skipped
+        + '\npainted  ' + (this.painted || 0)
+        + '\ncanvas   ' + Math.round(this.width) + 'x' + Math.round(this.height) + '  dpr ' + this.dpr
+        + '\nreduced  ' + this.profile.reducedMotion;
     }
 
     setVisible(v) { this.visible = !!v; this.lastTime = 0; }
