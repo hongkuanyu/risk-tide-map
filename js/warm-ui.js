@@ -47,6 +47,10 @@
     fire(el.train, 'input');
     fire(el.station, 'input');
     fire(el.slider, 'input');
+    if (/[?&]debug=1/.test(location.search)) {
+      var _ui = global.RiskTideApp && global.RiskTideApp.ui;
+      console.log('[warm-ui] after fire slider=', el.slider.value, 'state=', _ui ? _ui.state.departureOffset : 'n/a');
+    }
     markActive(el, key);
     if (el.note) el.note.textContent = preset.note;
   }
