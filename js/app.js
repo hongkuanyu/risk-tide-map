@@ -65,13 +65,30 @@
       const state = ui.getState();
       const eps = (mapController.getEndpoints && mapController.getEndpoints()) || config.endpoints;
       const origin = (eps.campus && eps.campus.coordinate) || config.endpoints.campus.coordinate;
-      nationInk.setData(global.RiskTideNationRisk.computeAll(global.RiskTideCities.list, origin, {
+      const rows = global.RiskTideNationRisk.computeAll(global.RiskTideCities.list, origin, {
         trainTime: state.trainTime,
         departureTime: state.departureTime,
         stationMinutes: state.stationMinutes,
         safeBufferMinutes: config.risk.safeBufferMinutes,
         mode: (config.nation && config.nation.mode) || 'rail'
-      }));
+      });
+      nationInk.setData(rows);
+      /* 全国模式下首屏答案应给全国结论，而不是本地路线时间 */
+      const heroLatest = document.getElementById('hero-latest');
+      const heroBuffer = document.getElementById('hero-buffer');
+      const heroLabel = document.querySelector('.hero-label');
+      const reachable = rows.filter(function (r) { return r.risk !== null && r.risk < 30; });
+      const tight = rows.filter(function (r) { return r.risk !== null && r.risk >= 30 && r.risk < 70; });
+      if (heroLabel) heroLabel.textContent = '最远安全可达';
+      if (heroLatest) {
+        let farthest = null;
+        reachable.forEach(function (r) { if (!farthest || r.distanceKm > farthest.distanceKm) farthest = r; });
+        heroLatest.textContent = farthest ? farthest.city.name : '暂无';
+      }
+      if (heroBuffer) {
+        heroBuffer.textContent = '全国 ' + rows.length + ' 城中 ' + reachable.length + ' 城宽裕'
+          + (tight.length ? ' · ' + tight.length + ' 城偏紧' : '');
+      }
     }
 
     const inkGL = (config.inkGL && config.inkGL.enabled && global.RiskTideInkGL && silkCanvas)
