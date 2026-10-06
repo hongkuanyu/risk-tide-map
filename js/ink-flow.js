@@ -2,8 +2,8 @@
 /*
  * Risk Tide V6 - InkFlowRenderer.
  *
- * The route is not drawn as lines and nothing travels along it. Instead the
- * ink *body* is a persistent density field that is advected every frame:
+ * The route is not drawn as a vector line. Its ink *body* is a persistent
+ * density field that is advected every frame:
  *
  *   velocity field (built from the route)  ->  semi-Lagrangian advection
  *   ->  diffusion  ->  decay  ->  injection at the source
@@ -102,8 +102,14 @@
 
       this.risk = 0;
       this.riskTarget = 0;
+      this.riskBand = -1;
       this.colour = [0, 124, 108];
       this.colourFrom = [0, 124, 108];
+      this.path = null;
+      this.pathLength = 0;
+      this.profile = {
+        reducedMotion: !!(global.matchMedia && global.matchMedia('(prefers-reduced-motion: reduce)').matches)
+      };
 
       this.off = document.createElement('canvas');
       this.offCtx = this.off.getContext('2d');
@@ -184,6 +190,11 @@
       if (v !== this.riskTarget) {
         this.colourFrom = this.colour.slice();
         this.riskTarget = v;
+        const band = Math.round(v / 10);
+        if (band !== this.riskBand) {
+          this.riskBand = band;
+          this.routeDirty = true;
+        }
       }
       return this;
     }
@@ -215,6 +226,14 @@
 
       const pts = resample(clean, 4);
       const n = pts.length;
+      let totalLength = 0;
+      const cumulative = new Float32Array(n);
+      for (let i = 1; i < n; i += 1) {
+        totalLength += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+        cumulative[i] = totalLength;
+      }
+      this.path = { points: pts, cumulative: cumulative };
+      this.pathLength = totalLength;
       const tx = new Float32Array(n);
       const ty = new Float32Array(n);
       const curv = new Float32Array(n);
@@ -242,9 +261,11 @@
       }
 
       const cfg = this.config;
-      const radius = (cfg.influence && cfg.influence.radius) || 30;
-      const coreR = (cfg.influence && cfg.influence.coreRadius) || 11;
-      const speed = cfg.speed || 46;
+      const riskT = clamp(this.riskTarget / 100, 0, 1);
+      const widthGain = cfg.riskWidthGain === undefined ? 0.45 : cfg.riskWidthGain;
+      const radius = ((cfg.influence && cfg.influence.radius) || 30) * (0.82 + riskT * widthGain);
+      const coreR = ((cfg.influence && cfg.influence.coreRadius) || 11) * (0.90 + riskT * 0.26);
+      const speed = (cfg.speed || 46) * (0.95 + riskT * 0.12);
       const shear = cfg.edgeShear === undefined ? 0.35 : cfg.edgeShear;
       const swirl = cfg.curveSwirl === undefined ? 0.55 : cfg.curveSwirl;
       const r2 = radius * radius;
@@ -327,9 +348,12 @@
       const rows = this.rows;
       const cell = this.cell;
       const cfg = this.config;
-      const diffuse = cfg.diffusion === undefined ? 0.16 : cfg.diffusion;
+      const riskT = clamp(this.risk / 100, 0, 1);
+      const diffuseBase = cfg.diffusion === undefined ? 0.16 : cfg.diffusion;
+      const diffuse = diffuseBase * (0.85 + riskT * 1.35);
       const decay = cfg.decay === undefined ? 0.985 : cfg.decay;
-      const inject = cfg.injection === undefined ? 0.55 : cfg.injection;
+      const densityGain = cfg.riskDensityGain === undefined ? 0.55 : cfg.riskDensityGain;
+      const inject = (cfg.injection === undefined ? 0.55 : cfg.injection) * (0.78 + riskT * densityGain);
       const warmBias = cfg.warmBias === undefined ? 0.24 : cfg.warmBias;
       const cool = this.cool;
       const warm = this.warm;
@@ -449,13 +473,71 @@
         // density -> alpha, softly compressed so the core stays readable
         /* 浓度 -> 不透明度用对比曲线：核心迅速变实，边缘迅速变淡，
            这样墨体有"重量"，而不是一团均匀的雾。 */
-        data[p + 3] = Math.round(255 * clamp(Math.pow(Math.min(1.15, total), 1.9) * 1.15, 0, 0.90));
+        const riskAlpha = 0.88 + clamp(this.risk / 100, 0, 1) * 0.18;
+        data[p + 3] = Math.round(255 * clamp(Math.pow(Math.min(1.15, total), 1.9) * 1.15 * riskAlpha, 0, 0.94));
       }
       this.offCtx.putImageData(this.imageData, 0, 0);
       ctx.clearRect(0, 0, this.width, this.height);
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
       ctx.drawImage(this.off, 0, 0, cols, rows, 0, 0, cols * this.cell, rows * this.cell);
+      this.drawFlowHead(ctx);
+    }
+
+    samplePath(distance) {
+      if (!this.path || !this.path.points.length || this.pathLength <= 0) return null;
+      const points = this.path.points;
+      const cumulative = this.path.cumulative;
+      const d = clamp(distance, 0, this.pathLength);
+      let lo = 0;
+      let hi = cumulative.length - 1;
+      while (lo < hi) {
+        const mid = Math.floor((lo + hi) / 2);
+        if (cumulative[mid] < d) lo = mid + 1;
+        else hi = mid;
+      }
+      const index = Math.max(1, lo);
+      const a = points[index - 1];
+      const b = points[index];
+      const span = cumulative[index] - cumulative[index - 1] || 1;
+      const t = (d - cumulative[index - 1]) / span;
+      return { x: lerp(a.x, b.x, t), y: lerp(a.y, b.y, t) };
+    }
+
+    /* A short, tapered packet of denser pigment makes the direction legible
+       within 1-2 seconds. It moves END -> START while route geometry remains
+       untouched in its original START -> END order. */
+    drawFlowHead(ctx) {
+      const cfg = this.config.flowHead || {};
+      if (cfg.enabled === false || this.profile.reducedMotion || !this.path || this.pathLength < 12) return;
+      const speed = cfg.speed || 148;
+      const length = Math.min(cfg.length || 58, this.pathLength * 0.22);
+      const travel = this.elapsed * speed + Math.sin(this.elapsed * 0.72) * 9;
+      const headDistance = this.pathLength - (travel % this.pathLength);
+      const edgeEnvelope = smoothstep(0, Math.min(30, this.pathLength * 0.12), headDistance)
+        * smoothstep(0, Math.min(30, this.pathLength * 0.12), this.pathLength - headDistance);
+      const segments = 12;
+      ctx.save();
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      for (let i = 0; i < segments; i += 1) {
+        const tailT = i / segments;
+        const d0 = clamp(headDistance + length * tailT, 0, this.pathLength);
+        const d1 = clamp(headDistance + length * ((i + 1) / segments), 0, this.pathLength);
+        const p0 = this.samplePath(d0);
+        const p1 = this.samplePath(d1);
+        if (!p0 || !p1 || d0 === d1) continue;
+        const weight = Math.pow(1 - tailT, 1.35);
+        const alpha = (0.09 + weight * 0.50) * edgeEnvelope;
+        ctx.strokeStyle = 'rgba(' + this.colour[0] + ',' + this.colour[1] + ',' + this.colour[2] + ',' + alpha + ')';
+        ctx.lineWidth = 0.8 + (cfg.width || 7.5) * weight;
+        ctx.beginPath();
+        ctx.moveTo(p0.x, p0.y);
+        ctx.lineTo(p1.x, p1.y);
+        ctx.stroke();
+      }
+      ctx.restore();
     }
 
     setVisible(v) { this.visible = !!v; this.lastTime = 0; }
@@ -477,7 +559,8 @@
       }
       return { cells: this.cols * this.rows, wet: wet, grid: this.cols + 'x' + this.rows,
         cell: this.cell, fps: Math.round(1000 / Math.max(1, this.frameAvg || 16.7)),
-        frameMs: Number((this.frameAvg || 16.7).toFixed(1)), risk: Math.round(this.risk) };
+        frameMs: Number((this.frameAvg || 16.7).toFixed(1)), risk: Math.round(this.risk),
+        direction: 'end-to-start' };
     }
 
     frame(timestamp) {
@@ -486,6 +569,17 @@
       this.lastTime = timestamp;
       try {
         if (this.visible) {
+          if (this.profile.reducedMotion) {
+            if (this.routeDirty || Math.abs(this.risk - this.riskTarget) > 0.5) {
+              this.risk = this.riskTarget;
+              const stops = (config.silk && config.silk.riskRamp) || null;
+              if (stops) this.colour = rampColor(stops, this.risk / 100, [0, 0, 0]);
+              if (this.routeDirty) this.rebuild();
+              this.render();
+            }
+            global.requestAnimationFrame(this.boundFrame);
+            return;
+          }
           this.update(dt);
           this.render();
         }

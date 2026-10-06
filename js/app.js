@@ -28,8 +28,10 @@
        这样锁死无锡的 maxBounds 不会把 43 座城市挡在画布外。 */
     /* 全国模式是可选预览：默认保持已验证的单路线墨流，
        用 ?nation=1 打开全国版做对比与调试；config.nation.enabled 仍可强制打开。 */
-    const nationOn = !!(config.nation && config.nation.enabled)
-      || /[?&]nation=1/.test(global.location ? global.location.search : '');
+    const search = global.location ? global.location.search : '';
+    const routeOnly = /[?&](?:route=1|nation=0)(?:&|$)/.test(search);
+    const nationOn = !routeOnly && (!!(config.nation && config.nation.enabled)
+      || /[?&]nation=1/.test(search));
     if (nationOn && config.nation.map) {
       const nm = config.nation.map;
       config.map.center = nm.center;
@@ -40,7 +42,21 @@
       if (config.amap) config.amap.zoom = nm.amapZoom;
     }
 
-    const useAmap = !!(config.amap && config.amap.enabled && config.amap.key && global.RiskTideAmapMap);
+    const viewLinks = Array.prototype.slice.call(document.querySelectorAll('.view-switch [data-view]'));
+    viewLinks.forEach(function (link) {
+      const active = link.dataset.view === (nationOn ? 'nation' : 'route');
+      if (active) link.setAttribute('aria-current', 'page');
+      else link.removeAttribute('aria-current');
+    });
+
+    /* The AMap key is domain-bound. Localhost must use the bundled MapLibre
+       path, otherwise the SDK renders an empty canvas and floods the console
+       with INVALID_USER_DOMAIN. ?amap=1 remains available for explicit tests. */
+    const host = global.location ? global.location.hostname : '';
+    const allowAmapHost = host === 'hongkuanyu.github.io' || /[?&]amap=1(?:&|$)/.test(search);
+    const forceOsm = /[?&]osm=1(?:&|$)/.test(search);
+    const useAmap = !!(config.amap && config.amap.enabled && config.amap.key
+      && global.RiskTideAmapMap && allowAmapHost && !forceOsm);
     const amapMissingKey = !!(config.amap && config.amap.enabled && !config.amap.key);
     const mapController = useAmap ? new global.RiskTideAmapMap() : new global.RiskTideMap();
     const particleCanvas = document.getElementById('particle-canvas');
@@ -60,6 +76,8 @@
 
     if (nationInk && shell) shell.dataset.nation = 'on';
 
+    let selectedNationCityId = null;
+
     function refreshNation() {
       if (!nationInk) return;
       const state = ui.getState();
@@ -73,21 +91,35 @@
         mode: (config.nation && config.nation.mode) || 'rail'
       });
       nationInk.setData(rows);
-      /* 全国模式下首屏答案应给全国结论，而不是本地路线时间 */
+      /* 全国模式下首屏答案应给全国结论，而不是本地路线时间。点击城市后，
+         题跋切换到该城市的可解释风险读数。 */
       const heroLatest = document.getElementById('hero-latest');
       const heroBuffer = document.getElementById('hero-buffer');
       const heroLabel = document.querySelector('.hero-label');
+      const inscriptionTitle = document.getElementById('inscription-title');
+      const inscriptionFlow = document.getElementById('inscription-flow');
       const reachable = rows.filter(function (r) { return r.risk !== null && r.risk < 30; });
       const tight = rows.filter(function (r) { return r.risk !== null && r.risk >= 30 && r.risk < 70; });
-      if (heroLabel) heroLabel.textContent = '最远安全可达';
-      if (heroLatest) {
+      const selected = selectedNationCityId
+        ? rows.find(function (r) { return r.city.id === selectedNationCityId; }) : null;
+      if (selected) {
+        if (heroLabel) heroLabel.textContent = '所选城市潮位';
+        if (heroLatest) heroLatest.textContent = selected.city.name;
+        if (heroBuffer) heroBuffer.textContent = '风险 ' + Math.round(selected.risk)
+          + ' · 推算 ' + Math.round(selected.travelMinutes) + ' 分钟 · 约 ' + Math.round(selected.distanceKm) + ' 公里';
+        if (inscriptionTitle) inscriptionTitle.textContent = selected.city.name + ' · 潮位 ' + Math.round(selected.risk);
+        if (inscriptionFlow) inscriptionFlow.textContent = selected.risk < 30 ? '时间宽裕，墨色清浅' : (selected.risk < 70 ? '余量收紧，金墨渐聚' : '时间承压，赭朱沉降');
+      } else {
+        if (heroLabel) heroLabel.textContent = '最远安全可达';
         let farthest = null;
         reachable.forEach(function (r) { if (!farthest || r.distanceKm > farthest.distanceKm) farthest = r; });
-        heroLatest.textContent = farthest ? farthest.city.name : '暂无';
-      }
-      if (heroBuffer) {
-        heroBuffer.textContent = '全国 ' + rows.length + ' 城中 ' + reachable.length + ' 城宽裕'
-          + (tight.length ? ' · ' + tight.length + ' 城偏紧' : '');
+        if (heroLatest) heroLatest.textContent = farthest ? farthest.city.name : '暂无';
+        if (heroBuffer) {
+          heroBuffer.textContent = '全国 ' + rows.length + ' 城中 ' + reachable.length + ' 城宽裕'
+            + (tight.length ? ' · ' + tight.length + ' 城偏紧' : '');
+        }
+        if (inscriptionTitle) inscriptionTitle.textContent = '墨色随风险沉降';
+        if (inscriptionFlow) inscriptionFlow.textContent = '选择城市，观其时间潮位';
       }
     }
 
@@ -99,6 +131,14 @@
         ? new global.RiskTideInkFlow(silkCanvas, mapController)
         : null));
     const ui = new global.RiskTideUI(global.routes);
+
+    if (nationInk && shell && typeof nationInk.bindInteraction === 'function') {
+      nationInk.bindInteraction(shell, function (row) {
+        selectedNationCityId = row && row.city ? row.city.id : null;
+        nationInk.setSelected(selectedNationCityId);
+        refreshNation();
+      });
+    }
 
     /* The ink-map palette lives in data/config.js; publish it to CSS so the
        pigment blooms, the map filter and the paper grain have one source of
@@ -149,8 +189,18 @@
       latestResult = result;
       refreshNation();
 
+      if (!nationOn) {
+        const inscriptionMode = document.getElementById('inscription-mode');
+        const inscriptionTitle = document.getElementById('inscription-title');
+        const inscriptionFlow = document.getElementById('inscription-flow');
+        if (inscriptionMode) inscriptionMode.textContent = '动态水墨路线';
+        if (inscriptionTitle) inscriptionTitle.textContent = result.valid
+          ? '风险潮位 ' + Math.round(result.risk) : '等待时间条件';
+        if (inscriptionFlow) inscriptionFlow.textContent = '墨与矿物色持续由终点回向起点';
+      }
+
       const routeKey = state.mode ? state.mode + ':' + (state.variantId || 'default') : 'none';
-      if (routeKey !== lastRouteKey) {
+      if (!nationOn && routeKey !== lastRouteKey) {
         const route = getSelectedRoute(state);
         mapController.setRoute(route);
         particles.setRoute(route);
@@ -208,7 +258,7 @@
           particles.routeDirty = true;
           if (silk) { silk.resize(); silk.routeDirty = true; }
           if (inkFlow) { inkFlow.resize(); inkFlow.routeDirty = true; }
-          ui.setStatus('地图底图已加载 · 路线规划同步中', 'normal');
+          ui.setStatus(nationOn ? '全国潮汐已展开 · 点击城市墨团查看风险' : '底图已加载 · 墨流由终点回向起点', 'normal');
         } else {
           ui.setStatus(status.message || '地图已降级，粒子仍持续流动。', 'warning');
         }
@@ -222,14 +272,16 @@
         applyState(ui.getState());
       }
     }).then(function () {
-      mapController.setRoute(getSelectedRoute(ui.getState()));
-      particles.setRoute(getSelectedRoute(ui.getState()));
-      particles.routeDirty = true;
-      if (silk) {
-        silk.setRoute(getSelectedRoute(ui.getState()));
-        silk.routeDirty = true;
+      if (!nationOn) {
+        mapController.setRoute(getSelectedRoute(ui.getState()));
+        particles.setRoute(getSelectedRoute(ui.getState()));
+        particles.routeDirty = true;
+        if (silk) {
+          silk.setRoute(getSelectedRoute(ui.getState()));
+          silk.routeDirty = true;
+        }
+        if (typeof particles.rebuildProjectedPath === 'function') particles.rebuildProjectedPath();
       }
-      if (typeof particles.rebuildProjectedPath === 'function') particles.rebuildProjectedPath();
     });
 
     /* V5: with tide.enabled = false the particle system is left dormant - no
@@ -237,9 +289,8 @@
        the motion. The instance stays alive so every existing reference (risk,
        route, metrics) keeps working, and flipping the flag restores it. */
     const particleTideEnabled = !(config.tide && config.tide.enabled === false);
-    if (particleTideEnabled) {
-      /* 全国视图需要一个更长的默认时间窗：否则 43 城在同一时刻全部顶到最高风险，
-       看不到随时间推进的墨色梯度。这里直接写 UI 状态，避免依赖预设的事件派发。 */
+    /* 全国视图需要一个更长的默认时间窗：否则 43 城在同一时刻全部顶到最高风险，
+       看不到随时间推进的墨色梯度。这个默认值不依赖粒子层是否启用。 */
     if (nationOn && config.nation && config.nation.defaultWindowMinutes) {
       const target = Number(config.nation.defaultWindowMinutes);
       if (Number.isFinite(target) && target > 0) {
@@ -250,13 +301,15 @@
       }
     }
 
-    particles.start();
+    if (particleTideEnabled && !nationOn) {
+      particles.start();
       // Risk Tide V2 pointer layer: hover wake, click ripple, route resonance.
       // All three are visual-only and reuse the existing animation loop.
       particles.bindPointer(document.getElementById('map-shell'));
     }
     if (silk) silk.start();
     if (inkFlow) inkFlow.start();
+    if (nationInk) nationInk.start();
     applyState(ui.getState());
 
     function showcaseTick(timestamp) {
@@ -354,13 +407,18 @@
       showcaseFrame = global.requestAnimationFrame(showcaseTick);
     }
 
-    global.setTimeout(startShowcase, 420);
+    if (config.showcase && config.showcase.enabled !== false && !nationOn) {
+      global.setTimeout(startShowcase, 420);
+    } else {
+      ui.setShowcase(false, 1);
+    }
 
     function handleVisibility() {
       const visible = !document.hidden;
       particles.setVisible(visible);
       if (silk) silk.setVisible(visible);
       if (inkFlow) inkFlow.setVisible(visible);
+      if (nationInk) nationInk.setVisible(visible);
       if (!visible) {
         global.cancelAnimationFrame(showcaseFrame);
       } else if (showcaseActive) {
@@ -386,7 +444,11 @@
     global.setInterval(function () {
       if (showcaseActive) return;
       const metrics = particles.getMetrics();
-      if (inkFlow) {
+      if (nationInk) {
+        const nationMetrics = nationInk.getMetrics();
+        ui.updateMetrics({ text: '全国潮汐 · ' + nationMetrics.painted + '/' + nationMetrics.cities
+          + ' 城入画 · 点击墨团可读' });
+      } else if (inkFlow) {
         const flow = inkFlow.getMetrics();
         ui.updateMetrics({ text: (metrics.mobile ? '移动端' : '桌面端') + ' · 彩墨流场 · ' + (flow.grid || flow.sim || '') + (flow.wet !== undefined ? ' · ' + flow.wet + ' 活跃格' : ' · ' + (flow.backend || '')) + (flow.frameMs ? ' · ' + flow.frameMs + 'ms' : '') });
       } else if (!particleTideEnabled && silk) {
@@ -406,6 +468,7 @@
       silk: silk,
       inkFlow: inkFlow,
       nationInk: nationInk,
+      viewMode: nationOn ? 'nation' : 'route',
       ui: ui,
       result: function () { return latestResult; }
     };

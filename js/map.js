@@ -298,6 +298,8 @@
       this.fitRoute();
     }
 
+    getEndpoints() { return this.endpoints; }
+
     repositionMarkers() {
       if (!this.markers.campus || !this.markers.station) return;
       this.markers.campus.setLngLat(this.endpoints.campus.coordinate);

@@ -12,6 +12,7 @@
 (function (global) {
   'use strict';
   const config = global.RiskTideConfig;
+  const LABEL_CITY_IDS = new Set(['beijing', 'shanghai', 'guangzhou', 'chengdu', 'wuhan', 'urumqi']);
 
   function clamp(v, a, b) { return Math.min(b, Math.max(a, v)); }
   function lerp(a, b, t) { return a + (b - a) * t; }
@@ -43,6 +44,10 @@
       this.ctx = canvas && canvas.getContext ? canvas.getContext('2d', { alpha: true, desynchronized: true }) : null;
       this.map = mapController;
       this.rows = [];
+      this.selectedId = null;
+      this.hoveredId = null;
+      this.onSelect = null;
+      this.insightEl = document.getElementById('nation-insight');
       this.width = 1; this.height = 1; this.dpr = 1;
       this.running = false; this.visible = !document.hidden;
       this.lastTime = 0; this.elapsed = 0;
@@ -72,8 +77,20 @@
       if (this.ctx && this.ctx.setTransform) this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
 
-    /* rows 来自 js/nation-risk.js：{city, risk, distanceKm, travelMinutes} */
-    setData(rows) { this.rows = (rows || []).filter(function (r) { return r && r.city && r.risk !== null; }); }
+    /* rows 来自 js/nation-risk.js：{city, risk, distanceKm, travelMinutes}。
+       displayRisk 单独缓动，时间条件变化时像新颜料渗入，而不是颜色硬切。 */
+    setData(rows) {
+      const previous = new Map();
+      this.rows.forEach(function (row) { previous.set(row.city.id, row.displayRisk); });
+      this.rows = (rows || []).filter(function (r) { return r && r.city && r.risk !== null; }).map(function (row) {
+        const copy = Object.assign({}, row);
+        const before = previous.get(row.city.id);
+        copy.displayRisk = Number.isFinite(before) ? before : row.risk;
+        return copy;
+      });
+    }
+
+    setSelected(cityId) { this.selectedId = cityId || null; }
 
     /* 把经纬度投影到画布（复用地图控制器，和路线渲染器同一套投影） */
     /* 等距圆柱投影：把中国范围直接映射进画布。
@@ -158,11 +175,12 @@
         const p = this.projectCity(row.city);
         if (!p) continue;
         /* 画布外的城市直接跳过 —— 全国缩放下这是主要的省时手段 */
-        const radius = this.radiusFor(row.risk, row.city.tier, viewScale);
+        const visualRisk = Number.isFinite(row.displayRisk) ? row.displayRisk : row.risk;
+        const radius = this.radiusFor(visualRisk, row.city.tier, viewScale);
         if (p.x < -radius * 2 || p.y < -radius * 2 || p.x > this.width + radius * 2 || p.y > this.height + radius * 2) continue;
-        const alpha = this.alphaFor(row.risk);
+        const alpha = this.alphaFor(visualRisk);
         if (alpha < 0.012) continue;
-        rampColor(stops, row.risk / 100, col);
+        rampColor(stops, visualRisk / 100, col);
         const r = Math.round(col[0]), g = Math.round(col[1]), b = Math.round(col[2]);
         const seed = hash01(i + row.city.id.length * 3.7);
         const time = this.profile.reducedMotion ? 0 : this.elapsed;
@@ -177,10 +195,28 @@
         this.blotPath(p.x, p.y, radius, seed, time);
         ctx.fill();
         /* 焦墨核心：风险很高时中心再加一点点浓度，形成"淹没"的重心 */
-        if (row.risk > 55) {
-          ctx.globalAlpha = alpha * smoothstep(55, 100, row.risk) * 0.55;
+        if (visualRisk > 55) {
+          ctx.globalAlpha = alpha * smoothstep(55, 100, visualRisk) * 0.55;
           this.blotPath(p.x, p.y, radius * 0.5, seed + 1.9, time * 1.2);
           ctx.fill();
+        }
+        /* 只有一级城市和当前交互城市留下题签，避免 43 个标签把地图
+           重新变成信息面板。 */
+        if (LABEL_CITY_IDS.has(row.city.id) || row.city.id === this.selectedId || row.city.id === this.hoveredId) {
+          const active = row.city.id === this.selectedId || row.city.id === this.hoveredId;
+          ctx.globalAlpha = active ? 0.92 : 0.60;
+          ctx.fillStyle = '#222824';
+          ctx.font = (active ? '600 ' : '') + '11px "Songti SC", "STSong", serif';
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(row.city.name + (active ? '  ' + Math.round(row.risk) : ''), p.x + radius + 5, p.y);
+        }
+        if (row.city.id === this.selectedId) {
+          ctx.globalAlpha = 0.62;
+          ctx.strokeStyle = 'rgb(' + r + ',' + g + ',' + b + ')';
+          ctx.lineWidth = 1;
+          this.blotPath(p.x, p.y, radius * 1.72, seed + 2.6, time * 0.35);
+          ctx.stroke();
         }
         ctx.restore();
         painted += 1;
@@ -217,6 +253,55 @@
         + '\nreduced  ' + this.profile.reducedMotion;
     }
 
+    pick(clientX, clientY, target) {
+      if (!target || !this.rows.length) return null;
+      const rect = target.getBoundingClientRect();
+      const x = clientX - rect.left;
+      const y = clientY - rect.top;
+      let best = null;
+      let bestDistance = Infinity;
+      for (let i = 0; i < this.rows.length; i += 1) {
+        const row = this.rows[i];
+        const point = this.projectCity(row.city);
+        if (!point) continue;
+        const radius = this.radiusFor(row.displayRisk, row.city.tier, 1);
+        const distance = Math.hypot(point.x - x, point.y - y);
+        if (distance <= Math.max(18, radius + 8) && distance < bestDistance) {
+          best = row;
+          bestDistance = distance;
+        }
+      }
+      return best;
+    }
+
+    bindInteraction(target, onSelect) {
+      if (!target || this.interactionTarget) return;
+      this.interactionTarget = target;
+      this.onSelect = typeof onSelect === 'function' ? onSelect : null;
+      const self = this;
+      target.addEventListener('pointermove', function (event) {
+        const row = self.pick(event.clientX, event.clientY, target);
+        self.hoveredId = row && row.city ? row.city.id : null;
+        target.classList.toggle('has-city-hover', !!row);
+        if (self.insightEl) {
+          self.insightEl.textContent = row
+            ? row.city.name + ' · 风险 ' + Math.round(row.risk) + ' · 推算 ' + Math.round(row.travelMinutes) + ' 分钟'
+            : '移近墨团，查看城市潮位';
+        }
+      }, { passive: true });
+      target.addEventListener('pointerleave', function () {
+        self.hoveredId = null;
+        target.classList.remove('has-city-hover');
+        if (self.insightEl) self.insightEl.textContent = '移近墨团，查看城市潮位';
+      }, { passive: true });
+      target.addEventListener('click', function (event) {
+        const row = self.pick(event.clientX, event.clientY, target);
+        if (!row) return;
+        self.selectedId = row.city.id;
+        if (self.onSelect) self.onSelect(row);
+      });
+    }
+
     setVisible(v) { this.visible = !!v; this.lastTime = 0; }
     start() {
       if (this.running || !this.ctx) return;
@@ -234,6 +319,11 @@
       try {
         if (this.visible) {
           this.elapsed += this.profile.reducedMotion ? 0 : dt;
+          const transition = 1 - Math.exp(-dt / 0.82);
+          for (let i = 0; i < this.rows.length; i += 1) {
+            const row = this.rows[i];
+            row.displayRisk = lerp(row.displayRisk, row.risk, this.profile.reducedMotion ? 1 : transition);
+          }
           this.draw();
         }
       } catch (e) {

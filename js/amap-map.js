@@ -280,12 +280,16 @@
 
     addRouteLayer() {
       if (!this.map) return;
+      /* AMap rejects an empty Polyline path and logs four console errors.
+         Seed both invisible geometry layers with the real endpoint pair; the
+         next setRoute() call replaces it with the planned route. */
+      const initialPath = [toGcj(this.endpoints.campus.coordinate), toGcj(this.endpoints.station.coordinate)];
       /* V4: the route is drawn by js/silk-route.js (18 semi-transparent ink
          strands). These two polylines are kept only as the faintest wet-ink
          bed underneath, so the route stays readable if the silk canvas ever
          fails - the old 4px solid 0.9-opacity navigation line is gone. */
       this.routeHalo = new AMap.Polyline({
-        path: [],
+        path: initialPath,
         strokeColor: '#268f6f',
         strokeWeight: 16,
         strokeOpacity: 0,
@@ -294,7 +298,7 @@
         zIndex: 80
       });
       this.routePolyline = new AMap.Polyline({
-        path: [],
+        path: initialPath,
         strokeColor: '#268f6f',
         strokeWeight: 1.1,
         strokeOpacity: 0,
