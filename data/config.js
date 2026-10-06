@@ -64,6 +64,7 @@
       ]
     },
     showcase: {
+      enabled: false,
       durationMs: 12000,
       timeline: [
         { at: 0.00, risk: 22 },
@@ -147,16 +148,15 @@
       envelope: 0.22,                             // strands converge at both ends
       /* 飞白 / 断墨: dash pattern per strand, in px */
       dash: { minRun: 40, maxRun: 140, minGap: 3, maxGap: 15, brokenShare: 0.34 },
-      /* 墨色浓度即风险：淡墨 -> 灰墨 -> 浓墨 -> 焦墨，
-         只有在最高的约 8% 区间才让焦墨里透出一点朱砂。
-         不做 绿→黄→橙→红 的 Dashboard 色阶。 */
+      /* 矿物色风险谱：颜色像颜料进入湿墨，而不是交通灯。
+         低风险为青灰，中段为米金/鎏金，高段转赭石与克制朱砂。 */
       riskRamp: [
-        { at: 0.00, rgb: [150, 158, 155] },  // 淡墨
-        { at: 0.28, rgb: [116, 126, 124] },  // 灰墨
-        { at: 0.52, rgb: [78, 88, 88] },     // 浓墨
-        { at: 0.78, rgb: [40, 47, 48] },     // 焦墨
-        { at: 0.92, rgb: [32, 36, 37] },     // 焦墨（平台，避免过早泛红）
-        { at: 1.00, rgb: [104, 34, 29] }     // 焦墨 + 少量朱砂
+        { at: 0.00, rgb: [82, 116, 113] },   // 青灰 / 淡墨青
+        { at: 0.24, rgb: [142, 139, 112] },  // 米金
+        { at: 0.46, rgb: [188, 142, 66] },   // 鎏金 / 琥珀
+        { at: 0.66, rgb: [154, 96, 55] },    // 赭石
+        { at: 0.84, rgb: [151, 58, 43] },    // 朱砂
+        { at: 1.00, rgb: [75, 35, 33] }      // 深朱砂 + 浓墨
       ],
       colourEaseMs: 280,                          // temporal easing on risk
       flowSpeed: 34,                              // px per second along the route
@@ -214,7 +214,7 @@
         amapZoom: 3.6
       },
       /* 低风险也要看得见：最小半径 8px、最小浓度 0.17，保证整张图都有墨，只是浓淡不同。 */
-      ink: { radiusMin: 8, radiusMax: 46, alphaMin: 0.17, alphaMax: 0.80, viewScale: 1,
+      ink: { radiusMin: 6, radiusMax: 35, alphaMin: 0.15, alphaMax: 0.68, viewScale: 1,
              projection: 'auto',           // 'auto' | 'flat'
              bounds: [73, 18, 136, 54],     // 等距投影用的中国范围
              pad: 0.06 }
@@ -254,7 +254,10 @@
       injection: 1.25,      // pigment fed in at the source
       warmBias: 0.24,       // second pigment field -> internal colour drift
       colourEaseMs: 280,
-      prewarmSteps: 240
+      prewarmSteps: 240,
+      riskWidthGain: 0.58,  // 风险越高，湿墨带越宽
+      riskDensityGain: 0.62,
+      flowHead: { enabled: true, speed: 148, length: 72, width: 10.5 }
     },
 
     particleBudgets: {
