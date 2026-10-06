@@ -5,6 +5,8 @@
   "description": "水墨星云互动风险地图：无锡学院到无锡东站",
   "scripts": {
     "start": "node serve.js",
+    "test": "node scripts/verify-site.js",
+    "build": "node scripts/verify-site.js",
     "vendor": "node scripts/vendor-maplibre.js"
   }
 }
