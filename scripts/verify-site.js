@@ -70,6 +70,9 @@ assert.ok(!inkFlow.includes('Math.random('), 'route renderer must not use frame-
 
 const config = fs.readFileSync(path.join(root, 'data/config.js'), 'utf8');
 assert.ok(config.includes('enabled: true') && config.includes('defaultWindowMinutes: 480'), 'nationwide view is not the default');
+const amapMap = fs.readFileSync(path.join(root, 'js/amap-map.js'), 'utf8');
+assert.ok(amapMap.includes('routePaddingMobile') && amapMap.includes('routePaddingDesktop'),
+  'AMap route fitting must use responsive padding');
 assert.ok(fs.readFileSync(path.join(root, 'js/nation-ink.js'), 'utf8').includes('weightedRisk / totalWeight'),
   'nationwide field is not normalized by local influence');
 const pale = [0, 0, 0], dark = [0, 0, 0];

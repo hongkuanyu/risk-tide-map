@@ -335,7 +335,14 @@
       if (!this.map || !this.route || this.route.length < 2) return;
       const overlays = [this.routeHalo, this.routePolyline, this.markers.campus, this.markers.station].filter(Boolean);
       if (overlays.length) {
-        this.map.setFitView(overlays, false, [90, 50, 240, 50], 13);
+        const mobile = global.matchMedia && global.matchMedia('(max-width: 760px)').matches;
+        const padding = mobile ? config.map.routePaddingMobile : config.map.routePaddingDesktop;
+        this.map.setFitView(overlays, false, [
+          padding.top,
+          padding.right,
+          padding.bottom,
+          padding.left
+        ], 13);
       }
     }
 
@@ -486,7 +493,6 @@
 
   global.RiskTideAmapMap = RiskTideAmapMap;
 })(window);
-
 
 
 
