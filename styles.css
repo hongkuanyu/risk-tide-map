@@ -400,6 +400,33 @@ button:disabled, input:disabled { opacity: 0.55; cursor: not-allowed; }
 }
 
 .map { position: absolute; inset: 0; z-index: 1; }
+.map-marker {
+  position: relative;
+  display: block;
+  width: 40px;
+  height: 52px;
+}
+.map-marker img {
+  display: block;
+  width: 40px;
+  height: 52px;
+}
+.map-marker .marker-label {
+  position: absolute;
+  top: calc(100% + 1px);
+  left: 50%;
+  width: max-content;
+  max-width: min(34vw, 180px);
+  padding: 2px 4px;
+  border: 1px solid rgba(32, 35, 31, 0.12);
+  background: rgba(243, 239, 231, 0.92);
+  color: var(--ink);
+  font-size: 11px;
+  line-height: 1.3;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
 /* ---------- V4 · 彩墨地图 (mineral pigment on 宣纸) ---------------------
    Layer order inside .map-shell:
      1 map canvas  2 pigment blooms  3 paper grain
@@ -907,6 +934,4 @@ button:disabled, input:disabled { opacity: 0.55; cursor: not-allowed; }
 @media (prefers-reduced-motion: reduce) {
   * { transition-duration: 0.01ms !important; animation: none !important; }
 }
-
-
 
