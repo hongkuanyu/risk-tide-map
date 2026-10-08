@@ -1,338 +1,273 @@
 /* global window, document */
-/*
- * 全国墨迹渲染器
- *
- * 每座城市一团墨；墨的"大小 + 浓度"由风险决定（墨即风险）。
- *   - 半径与不透明度都随风险单调上升，同样的风险值给出同样的视觉强度
- *   - 边缘由多组正弦叠加成不规则形状，不是标准圆形渐变 / heatmap blob
- *   - 每座城市有独立的相位与周期，动画互不同步；整体极慢
- *   - 朱砂只在最高区间出现（颜色由 config.silk.riskRamp 决定，最高约 8%）
- *   - prefers-reduced-motion 时冻结动画，只保留静态墨迹
- */
 (function (global) {
   'use strict';
-  const config = global.RiskTideConfig;
-  const LABEL_CITY_IDS = new Set(['beijing', 'shanghai', 'guangzhou', 'chengdu', 'wuhan', 'urumqi']);
 
-  function clamp(v, a, b) { return Math.min(b, Math.max(a, v)); }
-  function lerp(a, b, t) { return a + (b - a) * t; }
-  function smoothstep(e0, e1, x) {
-    const s = e1 - e0;
-    if (s === 0) return x < e0 ? 0 : 1;
-    const t = clamp((x - e0) / s, 0, 1);
+  const config = global.RiskTideConfig;
+  const stops = ['#f2ede2', '#aaa79f', '#4b4a45', '#181a19'].map(function (hex) {
+    const rgb = [
+      parseInt(hex.slice(1, 3), 16) / 255,
+      parseInt(hex.slice(3, 5), 16) / 255,
+      parseInt(hex.slice(5, 7), 16) / 255
+    ].map(function (value) {
+      return value <= 0.04045 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4);
+    });
+    const l = 0.4122214708 * rgb[0] + 0.5363325363 * rgb[1] + 0.0514459929 * rgb[2];
+    const m = 0.2119034982 * rgb[0] + 0.6806995451 * rgb[1] + 0.1073969566 * rgb[2];
+    const s = 0.0883024619 * rgb[0] + 0.2817188376 * rgb[1] + 0.6299787005 * rgb[2];
+    const lRoot = Math.cbrt(l), mRoot = Math.cbrt(m), sRoot = Math.cbrt(s);
+    return [
+      0.2104542553 * lRoot + 0.793617785 * mRoot - 0.0040720468 * sRoot,
+      1.9779984951 * lRoot - 2.428592205 * mRoot + 0.4505937099 * sRoot,
+      0.0259040371 * lRoot + 0.7827717662 * mRoot - 0.808675766 * sRoot
+    ];
+  });
+
+  function clamp(value, min, max) { return Math.min(max, Math.max(min, value)); }
+  function smoothstep(edge0, edge1, value) {
+    const t = clamp((value - edge0) / (edge1 - edge0), 0, 1);
     return t * t * (3 - 2 * t);
   }
-  function hash01(seed) {
-    const s = Math.sin(seed * 127.1 + 311.7) * 43758.5453;
-    return s - Math.floor(s);
+  function hash01(value) {
+    const x = Math.sin(value * 127.1 + 311.7) * 43758.5453;
+    return x - Math.floor(x);
   }
-  function rampColor(stops, t, out) {
-    const x = clamp(t, 0, 1);
-    let a = stops[0], b = stops[stops.length - 1];
-    for (let i = 1; i < stops.length; i++) if (x <= stops[i].at) { a = stops[i - 1]; b = stops[i]; break; }
-    const s = (b.at - a.at) || 1;
-    const k = smoothstep(0, 1, clamp((x - a.at) / s, 0, 1));
-    out[0] = a.rgb[0] + (b.rgb[0] - a.rgb[0]) * k;
-    out[1] = a.rgb[1] + (b.rgb[1] - a.rgb[1]) * k;
-    out[2] = a.rgb[2] + (b.rgb[2] - a.rgb[2]) * k;
-    return out;
+  function riskColour(risk, out) {
+    const t = clamp(risk / 100, 0, 1) * (stops.length - 1);
+    const index = Math.min(stops.length - 2, Math.floor(t));
+    const amount = t - index;
+    const a = stops[index], b = stops[index + 1];
+    const L = a[0] + (b[0] - a[0]) * amount;
+    const A = a[1] + (b[1] - a[1]) * amount;
+    const B = a[2] + (b[2] - a[2]) * amount;
+    const l = Math.pow(L + 0.3963377774 * A + 0.2158037573 * B, 3);
+    const m = Math.pow(L - 0.1055613458 * A - 0.0638541728 * B, 3);
+    const s = Math.pow(L - 0.0894841775 * A - 1.291485548 * B, 3);
+    const red = 4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s;
+    const green = -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s;
+    const blue = -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s;
+    const cinnabar = smoothstep(95, 100, risk) * 0.075;
+    out[0] = Math.round(clamp(red <= 0.0031308 ? red * 12.92 : 1.055 * Math.pow(red, 1 / 2.4) - 0.055, 0, 1) * 255 * (1 - cinnabar) + 145 * cinnabar);
+    out[1] = Math.round(clamp(green <= 0.0031308 ? green * 12.92 : 1.055 * Math.pow(green, 1 / 2.4) - 0.055, 0, 1) * 255 * (1 - cinnabar) + 42 * cinnabar);
+    out[2] = Math.round(clamp(blue <= 0.0031308 ? blue * 12.92 : 1.055 * Math.pow(blue, 1 / 2.4) - 0.055, 0, 1) * 255 * (1 - cinnabar) + 36 * cinnabar);
   }
 
   class NationInk {
     constructor(canvas, mapController) {
       this.canvas = canvas;
-      this.ctx = canvas && canvas.getContext ? canvas.getContext('2d', { alpha: true, desynchronized: true }) : null;
+      this.ctx = canvas && canvas.getContext
+        ? canvas.getContext('2d', { alpha: true, desynchronized: true }) : null;
       this.map = mapController;
       this.rows = [];
-      this.selectedId = null;
-      this.hoveredId = null;
-      this.onSelect = null;
-      this.insightEl = document.getElementById('nation-insight');
-      this.width = 1; this.height = 1; this.dpr = 1;
-      this.running = false; this.visible = !document.hidden;
-      this.lastTime = 0; this.elapsed = 0;
-      this.profile = { reducedMotion: !!(global.matchMedia && global.matchMedia('(prefers-reduced-motion: reduce)').matches) };
+      this.selectedCityId = null;
+      this.width = 1;
+      this.height = 1;
+      this.dpr = 1;
+      this.elapsed = 0;
+      this.lastTime = 0;
+      this.running = false;
+      this.visible = !document.hidden;
+      this.projectDirty = true;
+      this.reducedMotion = !!(global.matchMedia
+        && global.matchMedia('(prefers-reduced-motion: reduce)').matches);
       this.boundFrame = this.frame.bind(this);
       this.resize();
       this.observeResize();
-      this.initDebug();
     }
 
     observeResize() {
       if (!global.ResizeObserver || !this.canvas || this.resizeObserver) return;
-      const self = this;
-      this.resizeObserver = new global.ResizeObserver(function () { self.resize(); });
+      this.resizeObserver = new global.ResizeObserver(() => this.resize());
       this.resizeObserver.observe(this.canvas.parentNode || this.canvas);
     }
 
     resize() {
       if (!this.canvas) return;
       const rect = this.canvas.getBoundingClientRect();
-      const w = Math.max(1, rect.width || 600);
-      const h = Math.max(1, rect.height || 400);
-      const dpr = Math.min(global.devicePixelRatio || 1, 2);
-      this.width = w; this.height = h; this.dpr = dpr;
-      this.canvas.width = Math.round(w * dpr);
-      this.canvas.height = Math.round(h * dpr);
-      if (this.ctx && this.ctx.setTransform) this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      this.width = Math.max(1, rect.width || 600);
+      this.height = Math.max(1, rect.height || 400);
+      this.dpr = Math.min(global.devicePixelRatio || 1, 2);
+      this.canvas.width = Math.round(this.width * this.dpr);
+      this.canvas.height = Math.round(this.height * this.dpr);
+      if (this.ctx) this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+      this.projectDirty = true;
+      this.prepareField();
+      this.requestFrame();
     }
 
-    /* rows 来自 js/nation-risk.js：{city, risk, distanceKm, travelMinutes}。
-       displayRisk 单独缓动，时间条件变化时像新颜料渗入，而不是颜色硬切。 */
+    prepareField() {
+      const step = Math.max(4, Math.ceil(Math.max(this.width, this.height) / 140));
+      this.fieldWidth = Math.ceil(this.width / step);
+      this.fieldHeight = Math.ceil(this.height / step);
+      this.fieldStep = step;
+      this.field = document.createElement('canvas');
+      this.field.width = this.fieldWidth;
+      this.field.height = this.fieldHeight;
+      this.fieldCtx = this.field.getContext('2d', { alpha: true });
+      this.image = this.fieldCtx.createImageData(this.fieldWidth, this.fieldHeight);
+    }
+
     setData(rows) {
-      const previous = new Map();
-      this.rows.forEach(function (row) { previous.set(row.city.id, row.displayRisk); });
-      this.rows = (rows || []).filter(function (r) { return r && r.city && r.risk !== null; }).map(function (row) {
-        const copy = Object.assign({}, row);
-        const before = previous.get(row.city.id);
-        copy.displayRisk = Number.isFinite(before) ? before : row.risk;
-        return copy;
+      const previous = new Map(this.rows.map(function (row) { return [row.city.id, row]; }));
+      const next = (rows || []).filter(function (row) {
+        return row && row.city && Number.isFinite(Number(row.risk));
+      }).map(function (row) {
+        const old = previous.get(row.city.id);
+        return {
+          city: row.city,
+          risk: clamp(Number(row.risk), 0, 100),
+          displayRisk: old ? old.displayRisk : clamp(Number(row.risk), 0, 100),
+          x: old ? old.x : 0,
+          y: old ? old.y : 0,
+          phase: old ? old.phase : hash01(row.city.id.length * 17 + Number(row.city.coordinate[0]) * 31) * Math.PI * 2,
+          sigma: 0
+        };
       });
+      if (next.length !== this.rows.length || next.some((row) => !previous.has(row.city.id))) {
+        this.projectDirty = true;
+      }
+      this.rows = next;
+      this.requestFrame();
     }
 
-    setSelected(cityId) { this.selectedId = cityId || null; }
-
-    /* 把经纬度投影到画布（复用地图控制器，和路线渲染器同一套投影） */
-    /* 等距圆柱投影：把中国范围直接映射进画布。
-       用途有二：地图控制器给不出合理坐标时兜底（例如降级底图只覆盖无锡），
-       以及本地无法使用高德时的可验证路径。 */
-    flatProject(coord) {
+    projectCity(city) {
       const ink = (config.nation && config.nation.ink) || {};
-      const b = ink.bounds || [73, 18, 136, 54];
+      if (ink.projection !== 'flat' && this.map && typeof this.map.getScreenPath === 'function') {
+        const point = this.map.getScreenPath([city.coordinate])[0];
+        if (point && Number.isFinite(point.x) && Number.isFinite(point.y)
+            && point.x > -this.width * 0.5 && point.x < this.width * 1.5
+            && point.y > -this.height * 0.5 && point.y < this.height * 1.5) return point;
+      }
+      const bounds = ink.bounds || [73, 18, 136, 54];
       const pad = ink.pad === undefined ? 0.06 : ink.pad;
-      const x = (coord[0] - b[0]) / (b[2] - b[0]);
-      const y = 1 - (coord[1] - b[1]) / (b[3] - b[1]);
+      const x = (city.coordinate[0] - bounds[0]) / (bounds[2] - bounds[0]);
+      const y = 1 - (city.coordinate[1] - bounds[1]) / (bounds[3] - bounds[1]);
       return {
         x: this.width * (pad + clamp(x, 0, 1) * (1 - 2 * pad)),
         y: this.height * (pad + clamp(y, 0, 1) * (1 - 2 * pad))
       };
     }
 
-    projectCity(city) {
-      const ink = (config.nation && config.nation.ink) || {};
-      if (ink.projection !== 'flat' && this.map && typeof this.map.getScreenPath === 'function') {
-        const p = this.map.getScreenPath([city.coordinate])[0];
-        /* 只有落在画布附近才采信地图投影；否则退到等距投影，
-           避免降级底图把城市投到画布外几十万像素处。 */
-        if (p && Number.isFinite(p.x) && Number.isFinite(p.y)
-            && p.x > -this.width * 0.5 && p.x < this.width * 1.5
-            && p.y > -this.height * 0.5 && p.y < this.height * 1.5) {
-          return p;
-        }
-      }
-      return this.flatProject(city.coordinate);
+    projectRows() {
+      if (!this.projectDirty) return;
+      const radius = Math.max(26, Math.min(58, Math.min(this.width, this.height) * 0.075));
+      this.rows.forEach((row) => {
+        const point = this.projectCity(row.city);
+        row.x = point.x;
+        row.y = point.y;
+        row.sigma = radius;
+      });
+      this.projectDirty = false;
     }
 
-    radiusFor(risk, tier, viewScale) {
-      const cfg = (config.nation && config.nation.ink) || {};
-      const rMin = cfg.radiusMin === undefined ? 5 : cfg.radiusMin;
-      const rMax = cfg.radiusMax === undefined ? 44 : cfg.radiusMax;
-      const t = clamp(risk / 100, 0, 1);
-      /* 低风险时面积很小，风险上升才明显铺开（平方让"淹没感"来得晚一点） */
-      const base = lerp(rMin, rMax, Math.pow(t, 1.35));
-      const tierGain = tier === 1 ? 1.18 : 1;
-      return base * tierGain * (viewScale || 1);
+    advanceRisk(dt) {
+      let settling = false;
+      this.rows.forEach(function (row) {
+        const tau = row.risk >= row.displayRisk ? 1.6 : 3.2;
+        row.displayRisk += (row.risk - row.displayRisk) * (1 - Math.exp(-dt / tau));
+        if (Math.abs(row.risk - row.displayRisk) > 0.08) settling = true;
+      });
+      return settling;
     }
 
-    alphaFor(risk) {
-      const cfg = (config.nation && config.nation.ink) || {};
-      const aMin = cfg.alphaMin === undefined ? 0.10 : cfg.alphaMin;
-      const aMax = cfg.alphaMax === undefined ? 0.78 : cfg.alphaMax;
-      return lerp(aMin, aMax, Math.pow(clamp(risk / 100, 0, 1), 1.25));
-    }
-
-    /* 不规则边缘：每座城市有自己的相位与频率，绝不与邻城同步 */
-    blotPath(cx, cy, radius, seed, time) {
-      const ctx = this.ctx;
-      const steps = this.profile.reducedMotion ? 30 : 34;
-      const wob = 0.16;
-      ctx.beginPath();
-      for (let i = 0; i <= steps; i++) {
-        const a = (i / steps) * Math.PI * 2;
-        const n1 = Math.sin(a * 3 + seed * 6.3 + time * 0.09);
-        const n2 = Math.sin(a * 5 - seed * 4.1 + time * 0.061);
-        const n3 = Math.sin(a * 8 + seed * 9.7 - time * 0.037);
-        const r = radius * (1 + wob * (n1 * 0.5 + n2 * 0.32 + n3 * 0.18));
-        const x = cx + Math.cos(a) * r;
-        const y = cy + Math.sin(a) * r;
-        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-      }
-      ctx.closePath();
+    setSelected(cityId) {
+      if (this.selectedCityId === cityId) return;
+      this.selectedCityId = cityId || null;
+      this.requestFrame();
     }
 
     draw() {
-      const ctx = this.ctx;
-      if (!ctx) return;
-      ctx.clearRect(0, 0, this.width, this.height);
-      if (!this.rows.length) return;
-      const stops = (config.silk && config.silk.riskRamp) || null;
-      const col = [0, 0, 0];
-      const ink = (config.nation && config.nation.ink) || {};
-      const viewScale = ink.viewScale === undefined ? 1 : ink.viewScale;
-      let painted = 0;
-      for (let i = 0; i < this.rows.length; i++) {
-        const row = this.rows[i];
-        const p = this.projectCity(row.city);
-        if (!p) continue;
-        /* 画布外的城市直接跳过 —— 全国缩放下这是主要的省时手段 */
-        const visualRisk = Number.isFinite(row.displayRisk) ? row.displayRisk : row.risk;
-        const radius = this.radiusFor(visualRisk, row.city.tier, viewScale);
-        if (p.x < -radius * 2 || p.y < -radius * 2 || p.x > this.width + radius * 2 || p.y > this.height + radius * 2) continue;
-        const alpha = this.alphaFor(visualRisk);
-        if (alpha < 0.012) continue;
-        rampColor(stops, visualRisk / 100, col);
-        const r = Math.round(col[0]), g = Math.round(col[1]), b = Math.round(col[2]);
-        const seed = hash01(i + row.city.id.length * 3.7);
-        const time = this.profile.reducedMotion ? 0 : this.elapsed;
-        ctx.save();
-        /* 墨晕：更大更淡的一层，边缘软，不是 glow */
-        ctx.globalAlpha = alpha * 0.30;
-        ctx.fillStyle = 'rgb(' + r + ',' + g + ',' + b + ')';
-        this.blotPath(p.x, p.y, radius * 1.42, seed + 0.7, time * 0.7);
-        ctx.fill();
-        /* 墨体本体 */
-        ctx.globalAlpha = alpha;
-        this.blotPath(p.x, p.y, radius, seed, time);
-        ctx.fill();
-        /* 焦墨核心：风险很高时中心再加一点点浓度，形成"淹没"的重心 */
-        if (visualRisk > 55) {
-          ctx.globalAlpha = alpha * smoothstep(55, 100, visualRisk) * 0.55;
-          this.blotPath(p.x, p.y, radius * 0.5, seed + 1.9, time * 1.2);
-          ctx.fill();
-        }
-        /* 只有一级城市和当前交互城市留下题签，避免 43 个标签把地图
-           重新变成信息面板。 */
-        if (LABEL_CITY_IDS.has(row.city.id) || row.city.id === this.selectedId || row.city.id === this.hoveredId) {
-          const active = row.city.id === this.selectedId || row.city.id === this.hoveredId;
-          ctx.globalAlpha = active ? 0.92 : 0.60;
-          ctx.fillStyle = '#222824';
-          ctx.font = (active ? '600 ' : '') + '11px "Songti SC", "STSong", serif';
-          ctx.textAlign = 'left';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(row.city.name + (active ? '  ' + Math.round(row.risk) : ''), p.x + radius + 5, p.y);
-        }
-        if (row.city.id === this.selectedId) {
-          ctx.globalAlpha = 0.62;
-          ctx.strokeStyle = 'rgb(' + r + ',' + g + ',' + b + ')';
-          ctx.lineWidth = 1;
-          this.blotPath(p.x, p.y, radius * 1.72, seed + 2.6, time * 0.35);
-          ctx.stroke();
-        }
-        ctx.restore();
-        painted += 1;
-      }
-      this.painted = painted;
-      this.refreshDebug();
-    }
-
-    /* ?debug=1 时把渲染指标写在页面上，便于线上无法注入脚本时截图定案 */
-    initDebug() {
-      if (!/[?&]debug=1/.test(global.location ? global.location.search : '')) return;
-      const el = document.createElement('div');
-      el.style.cssText = 'position:fixed;left:10px;bottom:10px;z-index:9999;background:rgba(12,18,20,.84);color:#cfe8e4;font:11px/1.5 ui-monospace,Menlo,monospace;padding:8px 10px;border-radius:8px;pointer-events:none;white-space:pre';
-      document.body.appendChild(el);
-      this.debugEl = el;
-    }
-
-    refreshDebug() {
-      if (!this.debugEl) return;
-      let inside = 0, skipped = 0;
-      const self = this;
-      this.rows.forEach(function (row) {
-        const pt = self.projectCity(row.city);
-        if (!pt) { skipped += 1; return; }
-        const rr = self.radiusFor(row.risk, row.city.tier, 1);
-        if (pt.x < -rr * 2 || pt.y < -rr * 2 || pt.x > self.width + rr * 2 || pt.y > self.height + rr * 2) skipped += 1;
-        else inside += 1;
-      });
-      this.debugEl.textContent = 'nation-ink'
-        + '\ncities   ' + this.rows.length
-        + '\nonCanvas ' + inside + '  skipped ' + skipped
-        + '\npainted  ' + (this.painted || 0)
-        + '\ncanvas   ' + Math.round(this.width) + 'x' + Math.round(this.height) + '  dpr ' + this.dpr
-        + '\nreduced  ' + this.profile.reducedMotion;
-    }
-
-    pick(clientX, clientY, target) {
-      if (!target || !this.rows.length) return null;
-      const rect = target.getBoundingClientRect();
-      const x = clientX - rect.left;
-      const y = clientY - rect.top;
-      let best = null;
-      let bestDistance = Infinity;
-      for (let i = 0; i < this.rows.length; i += 1) {
-        const row = this.rows[i];
-        const point = this.projectCity(row.city);
-        if (!point) continue;
-        const radius = this.radiusFor(row.displayRisk, row.city.tier, 1);
-        const distance = Math.hypot(point.x - x, point.y - y);
-        if (distance <= Math.max(18, radius + 8) && distance < bestDistance) {
-          best = row;
-          bestDistance = distance;
+      if (!this.ctx || !this.rows.length) return;
+      this.projectRows();
+      const pixels = this.image.data;
+      const colour = [0, 0, 0];
+      const step = this.fieldStep;
+      const time = this.reducedMotion ? 0 : this.elapsed;
+      for (let gy = 0; gy < this.fieldHeight; gy += 1) {
+        const py = (gy + 0.5) * step;
+        for (let gx = 0; gx < this.fieldWidth; gx += 1) {
+          const px = (gx + 0.5) * step;
+          let weightedRisk = 0;
+          let totalWeight = 0;
+          let strongest = 0;
+          let focusWeight = 0;
+          for (let i = 0; i < this.rows.length; i += 1) {
+            const row = this.rows[i];
+            const shore = this.reducedMotion ? 1 : 1 + Math.sin(time * 0.12 + row.phase) * 0.012;
+            const sigma = row.sigma * shore;
+            const dx = px - row.x;
+            const dy = py - row.y;
+            const distance = (dx * dx + dy * dy) / (2 * sigma * sigma);
+            if (distance > 5.5) continue;
+            const weight = Math.exp(-distance);
+            weightedRisk += weight * row.displayRisk;
+            totalWeight += weight;
+            if (weight > strongest) strongest = weight;
+            if (row.city.id === this.selectedCityId) focusWeight = weight;
+          }
+          const offset = (gy * this.fieldWidth + gx) * 4;
+          if (totalWeight < 0.025) {
+            pixels[offset + 3] = 0;
+            continue;
+          }
+          const risk = weightedRisk / totalWeight;
+          riskColour(risk, colour);
+          const coverage = smoothstep(0.012, 0.32, Math.max(strongest, focusWeight * 1.18));
+          const alpha = Math.round((0.006 + smoothstep(12, 100, risk) * 0.15) * coverage * 255);
+          pixels[offset] = colour[0];
+          pixels[offset + 1] = colour[1];
+          pixels[offset + 2] = colour[2];
+          pixels[offset + 3] = alpha;
         }
       }
-      return best;
+      this.fieldCtx.putImageData(this.image, 0, 0);
+      this.ctx.clearRect(0, 0, this.width, this.height);
+      this.ctx.drawImage(this.field, 0, 0, this.width, this.height);
     }
 
-    bindInteraction(target, onSelect) {
-      if (!target || this.interactionTarget) return;
-      this.interactionTarget = target;
-      this.onSelect = typeof onSelect === 'function' ? onSelect : null;
-      const self = this;
-      target.addEventListener('pointermove', function (event) {
-        const row = self.pick(event.clientX, event.clientY, target);
-        self.hoveredId = row && row.city ? row.city.id : null;
-        target.classList.toggle('has-city-hover', !!row);
-        if (self.insightEl) {
-          self.insightEl.textContent = row
-            ? row.city.name + ' · 风险 ' + Math.round(row.risk) + ' · 推算 ' + Math.round(row.travelMinutes) + ' 分钟'
-            : '移近墨团，查看城市潮位';
-        }
-      }, { passive: true });
-      target.addEventListener('pointerleave', function () {
-        self.hoveredId = null;
-        target.classList.remove('has-city-hover');
-        if (self.insightEl) self.insightEl.textContent = '移近墨团，查看城市潮位';
-      }, { passive: true });
-      target.addEventListener('click', function (event) {
-        const row = self.pick(event.clientX, event.clientY, target);
-        if (!row) return;
-        self.selectedId = row.city.id;
-        if (self.onSelect) self.onSelect(row);
-      });
+    setVisible(visible) {
+      this.visible = !!visible;
+      this.lastTime = 0;
+      if (this.visible) this.requestFrame();
     }
 
-    setVisible(v) { this.visible = !!v; this.lastTime = 0; }
+    requestFrame() {
+      global.clearTimeout(this.frameTimer);
+      if (this.running && this.visible && !this.framePending) {
+        this.framePending = true;
+        global.requestAnimationFrame(this.boundFrame);
+      }
+    }
+
     start() {
       if (this.running || !this.ctx) return;
       this.running = true;
-      global.requestAnimationFrame(this.boundFrame);
+      this.requestFrame();
     }
-    stop() { this.running = false; }
+
+    stop() {
+      this.running = false;
+      this.framePending = false;
+      global.clearTimeout(this.frameTimer);
+    }
+
     getMetrics() {
-      return { cities: this.rows.length, painted: this.painted || 0, reducedMotion: this.profile.reducedMotion };
+      return { cities: this.rows.length, field: this.fieldWidth + '×' + this.fieldHeight };
     }
-    frame(ts) {
-      if (!this.running) return;
-      const dt = this.lastTime ? Math.min((ts - this.lastTime) / 1000, 0.032) : 0.016;
-      this.lastTime = ts;
-      try {
-        if (this.visible) {
-          this.elapsed += this.profile.reducedMotion ? 0 : dt;
-          const transition = 1 - Math.exp(-dt / 0.82);
-          for (let i = 0; i < this.rows.length; i += 1) {
-            const row = this.rows[i];
-            row.displayRisk = lerp(row.displayRisk, row.risk, this.profile.reducedMotion ? 1 : transition);
-          }
-          this.draw();
-        }
-      } catch (e) {
-        if (global.console && console.warn) console.warn('nation-ink frame skipped: ' + (e && e.message ? e.message : e));
+
+    frame(timestamp) {
+      this.framePending = false;
+      if (!this.running || !this.visible) return;
+      const dt = this.lastTime ? Math.min((timestamp - this.lastTime) / 1000, 0.05) : 0.016;
+      this.lastTime = timestamp;
+      this.elapsed += this.reducedMotion ? 0 : dt;
+      const settling = this.advanceRisk(dt);
+      this.draw();
+      if (settling || !this.reducedMotion) {
+        this.frameTimer = global.setTimeout(() => this.requestFrame(), settling ? 48 : 140);
       }
-      global.requestAnimationFrame(this.boundFrame);
     }
   }
 
-  NationInk.rampColor = rampColor;
+  NationInk.riskColour = riskColour;
   global.RiskTideNationInk = NationInk;
 })(window);

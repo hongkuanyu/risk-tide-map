@@ -329,7 +329,8 @@
       /* 全国模式：绝不能按本地路线自动贴合，否则 setFitView 会把视野拉回无锡，
          43 座城市的墨团全落到画布之外（这就是线上看不到墨的原因）。 */
       var _nat = global.RiskTideConfig && global.RiskTideConfig.nation;
-      if (_nat && (_nat.enabled || (global.location && /[?&]nation=1/.test(global.location.search)))) return;
+      var routeView = global.location && /[?&]route=1(?:&|$)/.test(global.location.search);
+      if (!routeView && _nat && (_nat.enabled || (global.location && /[?&]nation=1(?:&|$)/.test(global.location.search)))) return;
 
       if (!this.map || !this.route || this.route.length < 2) return;
       const overlays = [this.routeHalo, this.routePolyline, this.markers.campus, this.markers.station].filter(Boolean);
@@ -485,7 +486,6 @@
 
   global.RiskTideAmapMap = RiskTideAmapMap;
 })(window);
-
 
 
 

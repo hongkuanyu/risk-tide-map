@@ -42,7 +42,7 @@
       attribution: '地图数据 © OpenStreetMap contributors',
       tileMaxZoom: 12,
       rasterOpacity: 0.58,
-      routePaddingDesktop: { top: 36, right: 34, bottom: 48, left: 390 },
+      routePaddingDesktop: { top: 36, right: 34, bottom: 48, left: 34 },
       routePaddingMobile: { top: 28, right: 18, bottom: 28, left: 18 }
     },
 
@@ -64,7 +64,6 @@
       ]
     },
     showcase: {
-      enabled: false,
       durationMs: 12000,
       timeline: [
         { at: 0.00, risk: 22 },
@@ -107,16 +106,8 @@
       /* Applied to the raster/vector map canvas only - never to markers,
          the route or the ink tide. */
       canvasFilter: 'saturate(0.90) contrast(1.07) brightness(1.04) sepia(0.24) hue-rotate(-16deg)',
-      /* 孔雀青 / 竹青 / 石青 / 藤黄 / 赭石 / 胭脂 - pigment pooling */
-      blooms: [
-        { x: 14, y: 26, rx: 44, ry: 36, color: '38, 143, 111', alpha: 0.20 },
-        { x: 44, y: 80, rx: 38, ry: 32, color:  '196, 151, 48', alpha: 0.17 },
-        { x: 63, y: 20, rx: 37, ry: 31, color:   '48, 92, 154', alpha: 0.19 },
-        { x: 84, y: 66, rx: 33, ry: 29, color:  '166, 76, 54', alpha: 0.14 },
-        { x: 30, y: 55, rx: 30, ry: 26, color:   '86, 128, 96', alpha: 0.13 },
-        { x: 70, y: 46, rx: 26, ry: 22, color:  '214, 178, 92', alpha: 0.10 }
-      ],
-      baseWash: 'linear-gradient(118deg, rgba(239,233,218,0.10), rgba(44,132,120,0.045) 48%, rgba(61,91,145,0.055))',
+      blooms: [],
+      baseWash: 'none',
       textureOpacity: 0.18,
       grainOpacity: 0.30
     },
@@ -148,15 +139,16 @@
       envelope: 0.22,                             // strands converge at both ends
       /* 飞白 / 断墨: dash pattern per strand, in px */
       dash: { minRun: 40, maxRun: 140, minGap: 3, maxGap: 15, brokenShare: 0.34 },
-      /* 矿物色风险谱：颜色像颜料进入湿墨，而不是交通灯。
-         低风险为青灰，中段为米金/鎏金，高段转赭石与克制朱砂。 */
+      /* 墨色浓度即风险：淡墨 -> 灰墨 -> 浓墨 -> 焦墨，
+         只有在最高的约 8% 区间才让焦墨里透出一点朱砂。
+         不做 绿→黄→橙→红 的 Dashboard 色阶。 */
       riskRamp: [
-        { at: 0.00, rgb: [82, 116, 113] },   // 青灰 / 淡墨青
-        { at: 0.24, rgb: [142, 139, 112] },  // 米金
-        { at: 0.46, rgb: [188, 142, 66] },   // 鎏金 / 琥珀
-        { at: 0.66, rgb: [154, 96, 55] },    // 赭石
-        { at: 0.84, rgb: [151, 58, 43] },    // 朱砂
-        { at: 1.00, rgb: [75, 35, 33] }      // 深朱砂 + 浓墨
+        { at: 0.00, rgb: [150, 158, 155] },  // 淡墨
+        { at: 0.28, rgb: [116, 126, 124] },  // 灰墨
+        { at: 0.52, rgb: [78, 88, 88] },     // 浓墨
+        { at: 0.78, rgb: [40, 47, 48] },     // 焦墨
+        { at: 0.92, rgb: [32, 36, 37] },     // 焦墨（平台，避免过早泛红）
+        { at: 1.00, rgb: [104, 34, 29] }     // 焦墨 + 少量朱砂
       ],
       colourEaseMs: 280,                          // temporal easing on risk
       flowSpeed: 34,                              // px per second along the route
@@ -195,16 +187,12 @@
       reducedMotionScale: 0.32
     },
 
-    /* ---- 全国墨迹 ------------------------------------------------------
-       enabled = false 时完全不启动，页面保持现有的单路线墨流；
-       改成 true 则关闭单路线墨流，改由 43 座城市的墨团表达风险。
-       行程时间来自 js/nation-risk.js 的直线距离示意模型，不是真实时刻表。 */
+    /* 全国视图默认开启；?route=1 进入单程路线视图。
+       行程时间来自直线距离示意模型，并非实时交通或铁路时刻表。 */
     nation: {
       enabled: true,
       mode: 'rail',            // 'rail' | 'drive'
-      defaultWindowMinutes: 480,     // 全国视图默认 8 小时窗，否则 43 城全顶到最高风险
-      /* 全国视野：仅在 nation.enabled = true 时覆盖 config.map / amap.zoom，
-         关闭时地图仍锁在无锡（现有行为不变）。 */
+      defaultWindowMinutes: 480,
       map: {
         center: [104.5, 35.5],
         zoom: 3.4,
@@ -213,19 +201,15 @@
         maxBounds: [[72, 14], [138, 55]],
         amapZoom: 3.6
       },
-      /* 低风险也要看得见：最小半径 8px、最小浓度 0.17，保证整张图都有墨，只是浓淡不同。 */
-      ink: { radiusMin: 6, radiusMax: 35, alphaMin: 0.15, alphaMax: 0.68, viewScale: 1,
-             projection: 'auto',           // 'auto' | 'flat'
-             bounds: [73, 18, 136, 54],     // 等距投影用的中国范围
-             pad: 0.06 }
+      ink: {
+        projection: 'auto',
+        bounds: [73, 18, 136, 54],
+        pad: 0.06
+      }
     },
 
-    /* ---- V6 · InkFlowRenderer ------------------------------------------
-       The route is a persistent ink body pushed through a velocity field:
-       advection -> diffusion -> decay -> injection. No lines, no moving
-       points. See js/ink-flow.js. */
-    /* WebGL2 path: same API as inkFlow, ping-pong feedback. Off until it has
-       been verified on the target devices - flip to true to try it. */
+    /* Retained as an opt-in experimental renderer; the default route uses
+       the cached, one-time ink stroke in js/ink-flow.js. */
     inkGL: {
       enabled: false,
       sim: 256,
@@ -243,127 +227,12 @@
     },
 
     inkFlow: {
-      enabled: true,
-      grid: { desktop: 300, mobile: 200 },   // finer grid -> crisper core
-      influence: { radius: 8, coreRadius: 2.5 },  // thin stream, not a blob
-      speed: 132,            // px/s along the route at the core
-      edgeShear: 0.35,      // edges lag the core -> stretching / shear
-      curveSwirl: 0.55,     // rotational term at bends -> curl and vortices
-      diffusion: 0.008,     // barely spreads
-      decay: 0.992,         // slow drying
-      injection: 1.25,      // pigment fed in at the source
-      warmBias: 0.24,       // second pigment field -> internal colour drift
-      colourEaseMs: 280,
-      prewarmSteps: 240,
-      riskWidthGain: 0.58,  // 风险越高，湿墨带越宽
-      riskDensityGain: 0.62,
-      flowHead: { enabled: true, speed: 148, length: 72, width: 10.5 }
-    },
-
-    particleBudgets: {
-      desktop: { low: 2000, base: 2800, high: 3100, maximum: 3400 },
-      mobile: { low: 560, base: 880, high: 960, maximum: 1050 },
-      layers: { fog: 0.50, flow: 0.35, highlight: 0.15 },
-      dpr: { desktop: 2, mobile: 1.5 }
-    },
-
-    /* ---- Risk Tide V2 visual layer -------------------------------------
-       All particle-motion, interaction and trail tuning lives here so the
-       look can be re-tuned without touching js/particles.js logic. */
-    tide: {
-      /* V5: the particle tide is switched OFF. The route is now animated as a
-         brush painting - a wet brush travels along the line and re-inks it.
-         Flip this back to true to restore the particle system (the code is
-         untouched and still fully wired). */
-      enabled: false,
-      /* ============ Risk Tide water tuning (single source of truth) =====
-         Everything that decides how the current *feels* lives here.
-         Motion -> channel -> risk -> trail -> layers -> interactions. */
-
-      // ---- Motion ------------------------------------------------------
-      speedVariance: [0.85, 1.15],      // stable per-particle speed bias
-      speedModulationAmp: 0.06,         // very slow individual speed drift
-      speedModulationFreq: [0.04, 0.08],
-      lateralAmplitude: { fog: 0.5, flow: 0.22, highlight: 0.11 },
-      driftFreqA: [0.055, 0.115],       // two incommensurate tide waves
-      driftFreqB: [0.019, 0.043],
-      driftNoiseScale: 0.0016,
-      driftNoiseAmp: 0.2,
-
-      // ---- Channel (the invisible current width) ------------------------
-      channelWidth: { fog: 1.28, flow: 0.62, highlight: 0.38 },
-      channelConcentration: 2.05,        // >1 keeps most particles near centre
-      channelRiskGain: 0.3,             // mild "rising tide" with risk
-      channelConvergeStart: 0.8,        // converge into the destination
-      channelConvergeAmount: 0.5,
-
-      // ---- Risk --------------------------------------------------------
-      turbulenceLowEdge: 0.16,          // calm until the mid range
-      turbulenceHighEdge: 0.92,
-      turbulenceDriftGain: 1.85,        // bounded: heading stays route-led
-      turbulenceCurlGain: 1.8,
-      turbulenceEddyGain: 1.05,
-      turbulenceSpeedSpread: 0.5,
-      riskSmoothing: 0.12,              // exponential base, smaller = slower
-      colorSmoothing: 0.12,
-
-      // ---- Trail -------------------------------------------------------
-      trailLength: { fog: 1.32, flow: 1.72, highlight: 1.92 },
-      trailSpeedGain: 0.28,
-      trailRiskGain: 0.24,
-      trailPersonality: [0.85, 1.15],
-      trailSegments: { fog: 3, flow: 5, highlight: 4 },
-
-      // ---- Layer depth (deliberately subtle) ---------------------------
-      layerOpacity: { fog: 0.58, flow: 0.84, highlight: 0.88 },
-      layerSize: { fog: 1.22, flow: 1.28, highlight: 1.14 },
-      globalOpacity: 0.76,
-
-      // ---- Lifecycle ---------------------------------------------------
-      lifeFadeIn: 0.1,
-      lifeFadeOutStart: 0.86,
-
-      // ---- Hover wake --------------------------------------------------
-      wakeRadius: { desktop: 108, mobile: 0 },
-      wakeAlphaGain: 0.42,
-      wakeTrailGain: 0.5,
-      wakeSizeGain: 0.08,
-      wakeFadeSpeed: 7.0,
-      wakeSpeedGain: 0.22,
-
-      // ---- Click ripple ------------------------------------------------
-      rippleLife: 1.15,
-      rippleMax: { desktop: 4, mobile: 2 },
-      rippleRadius: 86,
-      rippleWidth: 1.1,
-      rippleAlpha: 0.19,
-      rippleDelay: 0.11,
-
-      // ---- Route resonance --------------------------------------------
-      resonanceCooldown: 1.9,
-      resonanceLife: 1.3,
-      resonanceWidth: 0.1,              // ahead of the packet
-      resonanceWidthBehind: 0.055,      // faster decay behind it
-      resonanceGain: 1.0,
-      resonanceBandAlpha: 0.12,
-      resonanceTriggerDistance: { desktop: 62, mobile: 0 }
-    },
-    quality: {
-      movingScale: 0.64,
-      lowMemoryGb: 4,
-      lowCpuCores: 4,
-      targetFrameMs: 19,
-      recoveryFrameMs: 14.5,
-      sampleDesktop: 1.0,
-      sampleMobile: 0.72
+      enabled: true
     }
   };
 
   global.RiskTideConfig = config;
 })(window);
-
-
-
 
 
 

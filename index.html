@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#efe8dc">
-  <meta name="description" content="风险潮汐：把全国出行的时间压力，变成一幅可操作的数字水墨长卷。">
+  <meta name="description" content="风险潮汐：以时间余量，观看全国出行风险的水墨潮位。">
   <title>风险潮汐 · 全国时间风险地图</title>
   <link rel="stylesheet" href="vendor/maplibre-gl.css?v=81">
   <link rel="stylesheet" href="styles.css?v=81">
@@ -75,16 +75,19 @@
   <div class="app-shell" id="app-shell">
     <header class="topbar">
       <a class="brand" href="./" aria-label="回到首页">
-        <span class="brand-mark" aria-hidden="true">潮</span>
+        <svg class="brand-mark" viewBox="0 0 28 28" aria-hidden="true">
+          <path d="M3 19.5C7.2 19.5 7.1 8 12.2 8s4.3 11.4 8.4 11.4c2 0 3.1-1.3 4.2-3.4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="square"/>
+          <path d="M12.2 5.2v5.5" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        </svg>
         <span class="brand-copy">
-          <strong>风险潮汐 · 全国时间风险地图</strong>
-          <small>RISK TIDE · TIME PRESSURE IN MOTION</small>
+          <strong>风险潮汐</strong>
+          <small>全国时间风险地图</small>
         </span>
       </a>
 
-      <nav class="view-switch" aria-label="地图视图">
+      <nav class="view-nav" aria-label="地图视图">
         <a href="./" data-view="nation">全国潮汐</a>
-        <a href="?route=1" data-view="route">单程墨流</a>
+        <a href="?route=1" data-view="route">单程墨线</a>
       </nav>
 
       <div class="scenario-strip" role="group" aria-label="场景预设">
@@ -103,7 +106,7 @@
           <span id="topbar-scenario-note">按高铁 18:00 出发</span>
           <input id="departure-time-picker" class="departure-time-picker" type="time" step="60" value="16:00" aria-label="修改计划出发时间">
         </label>
-        <span class="data-pill"><i></i> 高德 / OSM</span>
+        <span class="data-pill"><i></i> 地图 API · 高德 / OSM</span>
       </div>
     </header>
 
@@ -134,29 +137,14 @@
     <main class="stage">
       <section class="map-shell" id="map-shell" data-risk-level="unknown" aria-label="出行风险路线地图">
         <div id="map" class="map"></div>
-        <canvas id="particle-canvas" class="particle-canvas" aria-hidden="true"></canvas>
         <canvas id="silk-canvas" class="silk-canvas" aria-hidden="true"></canvas>
         <canvas id="nation-canvas" class="nation-canvas" aria-hidden="true"></canvas>
         <div class="map-vignette" aria-hidden="true"></div>
         <div class="map-grid" aria-hidden="true"></div>
-        <div class="map-inscription" aria-hidden="true">
-          <span id="inscription-mode">全国时间余量</span>
-          <strong id="inscription-title">墨色随风险沉降</strong>
-          <small id="inscription-flow">选择城市，观其时间潮位</small>
-        </div>
-        <div class="risk-key" aria-label="风险矿物色图例">
-          <span>低</span><i data-tone="low"></i><i data-tone="mid-low"></i><i data-tone="mid"></i><i data-tone="mid-high"></i><i data-tone="high"></i><i data-tone="extreme"></i><span>高</span>
-        </div>
-        <div class="nation-insight" id="nation-insight" role="status" aria-live="polite">移近墨团，查看城市潮位</div>
         <div class="map-legend" aria-label="地图图例">
-          <span><i class="legend-dot safe"></i>起</span>
-          <span><i class="legend-dot station"></i>终</span>
-          <span><i class="legend-line"></i>终点逆流至起点</span>
-        </div>
-        <div class="showcase-overlay" id="showcase-overlay" aria-live="polite">
-          <div class="showcase-kicker">INK TIDE · AUTO PROLOGUE</div>
-          <div class="showcase-copy">让最后一小时的迟疑，先被看见。</div>
-          <div class="showcase-progress"><span id="showcase-progress"></span></div>
+          <span><i class="legend-dot safe"></i>起点</span>
+          <span><i class="legend-dot station"></i>终点 / 风险源</span>
+          <span><i class="legend-line"></i>风险潮汐</span>
         </div>
         <div class="map-status" id="status-line" role="status" data-type="normal"></div>
       </section>
@@ -164,14 +152,14 @@
       <aside class="control-panel" id="control-panel" aria-label="出行风险控制面板">
         <div class="panel-heading">
           <div>
-            <p class="eyebrow">TIME INSCRIPTION · 时间题跋</p>
+            <p class="eyebrow">出行时间</p>
             <h1>最晚何时<br><em>必须出发</em></h1>
           </div>
-          <span class="live-stamp">潮位 0—100</span>
+          <span class="live-stamp">风险 0—100</span>
         </div>
 
         <section class="panel-section">
-          <div class="section-label"><span>壹</span><strong>选择出行方式</strong></div>
+          <div class="section-label"><span>01</span><strong>选择出行方式</strong></div>
           <div class="mode-grid">
             <button class="mode-button" id="mode-taxi" type="button" aria-pressed="false">
               <span class="mode-icon">↗</span>
@@ -190,7 +178,7 @@
         </label>
 
         <section class="panel-section">
-          <div class="section-label"><span>贰</span><strong>输入时间条件</strong></div>
+          <div class="section-label"><span>02</span><strong>输入时间条件</strong></div>
           <div class="form-grid">
             <label class="field">
               <span>发车 / 开始时间</span>
@@ -213,7 +201,7 @@
         </section>
 
         <section class="panel-section results-section">
-          <div class="section-label"><span>叁</span><strong>时间结论</strong></div>
+          <div class="section-label"><span>03</span><strong>风险读数</strong></div>
           <div class="hero-answer">
             <span class="hero-label">建议出发</span>
             <strong id="hero-latest">--:--</strong>
@@ -259,21 +247,19 @@
     </main>
 
     <footer class="footer">
-      <span>缓冲 = 可用时间 − 路线时间 − 安全预留；风险不是迟到概率。</span>
-      <span>地图：高德 / © OpenStreetMap · 全国行程为可解释示意，不接入实时天气</span>
+      <span>时间风险模型：缓冲 = 可用时间 − 路线时间 − 安全预留；风险只由计划时间差计算。</span>
+      <span>地图数据：高德地图或 © OpenStreetMap contributors · 风险模型不接入实时天气接口</span>
       <span id="metrics" class="metrics">正在探测设备性能…</span>
     </footer>
   </div>
 
-  <noscript>此页面需要 JavaScript 才能运行水墨星云粒子与风险计算。</noscript>
+  <noscript>此页面需要 JavaScript 才能运行地图与风险计算。</noscript>
   <script src="vendor/maplibre-gl.js?v=81"></script>
   <script src="data/config.js?v=81"></script>
   <script src="data/routes.js?v=81"></script>
   <script src="js/risk.js?v=81"></script>
-  <script src="js/flow-field.js?v=81"></script>
   <script src="js/map.js?v=81"></script>
   <script src="js/amap-map.js?v=81"></script>
-  <script src="js/particles.js?v=81"></script>
   <script src="js/silk-route.js?v=81"></script>
   <script src="js/ink-flow.js?v=81"></script>
   <script src="data/cities.js?v=81"></script>
@@ -286,7 +272,6 @@
   <script src="js/app.js?v=81"></script>
 </body>
 </html>
-
 
 
 

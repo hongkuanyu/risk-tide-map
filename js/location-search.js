@@ -258,7 +258,7 @@
     this.tries += 1;
     if (this.ready()) return true;
     if (this.tries > 60) {
-      this.setHint('高德服务未加载，搜索暂不可用；地图与粒子仍会继续运行。', 'warning');
+      this.setHint('高德服务未加载，搜索暂不可用；地图与风险计算仍可使用。', 'warning');
       return false;
     }
     return false;
@@ -273,7 +273,6 @@
 
   global.RiskTideLocationSearch = LocationSearch;
 })(window);
-
 
 
 

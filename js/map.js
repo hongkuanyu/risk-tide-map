@@ -335,6 +335,8 @@
     }
 
     fitRoute() {
+      const routeView = global.location && /[?&]route=1(?:&|$)/.test(global.location.search);
+      if (!routeView && config.nation && config.nation.enabled) return;
       if (!this.map || !this.route || this.route.length < 2) return;
       const padding = global.matchMedia('(max-width: 760px)').matches
         ? config.map.routePaddingMobile
@@ -502,7 +504,6 @@
   global.RiskTideMap = RiskTideMap;
   global.RiskTideMapUtils = { riskColor: riskColor, mixRgb: mixRgb };
 })(window);
-
 
 
 

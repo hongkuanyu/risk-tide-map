@@ -30,13 +30,17 @@ requiredFiles.forEach((relative) => {
 });
 
 const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
-['map-shell', 'nation-canvas', 'silk-canvas', 'origin-input', 'dest-input', 'hero-latest', 'nation-insight']
+['map-shell', 'nation-canvas', 'silk-canvas', 'origin-input', 'dest-input', 'hero-latest']
   .forEach((id) => assert.ok(html.includes(`id="${id}"`), `missing #${id}`));
+assert.ok(html.includes('class="brand-mark"'), 'brand mark is missing');
+assert.ok(html.includes('data-view="nation"') && html.includes('data-view="route"'), 'view navigation is incomplete');
+assert.ok(!html.includes('particle-canvas') && !html.includes('particles.js'), 'legacy particle renderer is still wired');
+assert.ok(!fs.existsSync(path.join(root, 'js/particles.js')), 'legacy particle renderer was not removed');
 
 const sandbox = { console, Math, Date, setTimeout, clearTimeout };
 sandbox.window = sandbox;
 vm.createContext(sandbox);
-['js/risk.js', 'data/cities.js', 'js/nation-risk.js'].forEach((relative) => {
+['data/config.js', 'js/risk.js', 'data/cities.js', 'js/nation-risk.js', 'js/nation-ink.js', 'js/ink-flow.js'].forEach((relative) => {
   vm.runInContext(fs.readFileSync(path.join(root, relative), 'utf8'), sandbox, { filename: relative });
 });
 
@@ -59,12 +63,18 @@ for (let i = 1; i < rows.length; i += 1) {
 }
 
 const inkFlow = fs.readFileSync(path.join(root, 'js/ink-flow.js'), 'utf8');
-assert.ok(inkFlow.includes('this.vx[idx] = (-tx[best]'), 'ink velocity no longer runs END -> START');
-assert.ok(inkFlow.includes('destination is along = 1'), 'pigment source is no longer documented at destination');
-assert.ok(!inkFlow.includes('.reverse('), 'business route geometry must not be reversed');
+assert.ok(inkFlow.includes('drawRibbon') && inkFlow.includes('drawHead'), 'layered route ink renderer is missing');
+assert.ok(inkFlow.includes('for (let i = forward.length - 1; i >= 0; i -= 1)'), 'route stroke no longer writes END -> START');
+assert.ok(!inkFlow.includes('.reverse('), 'route geometry should be traversed without mutating it');
+assert.ok(!inkFlow.includes('Math.random('), 'route renderer must not use frame-random variation');
 
 const config = fs.readFileSync(path.join(root, 'data/config.js'), 'utf8');
-assert.ok(config.includes('flowHead: { enabled: true'), 'flow head is disabled');
-assert.ok(config.includes('[82, 116, 113]') && config.includes('[151, 58, 43]'), 'mineral risk palette is incomplete');
+assert.ok(config.includes('enabled: true') && config.includes('defaultWindowMinutes: 480'), 'nationwide view is not the default');
+assert.ok(fs.readFileSync(path.join(root, 'js/nation-ink.js'), 'utf8').includes('weightedRisk / totalWeight'),
+  'nationwide field is not normalized by local influence');
+const pale = [0, 0, 0], dark = [0, 0, 0];
+sandbox.RiskTideNationInk.riskColour(0, pale);
+sandbox.RiskTideNationInk.riskColour(100, dark);
+assert.ok(pale[0] > dark[0] && pale[1] > dark[1], 'continuous ink palette endpoints are incorrect');
 
-console.log('Risk Tide verification passed: resources, formulas, 43-city model, mineral palette, END -> START flow.');
+console.log('Risk Tide verification passed: resources, formulas, 43-city model, normalized ink field, particle-free END -> START stroke.');
