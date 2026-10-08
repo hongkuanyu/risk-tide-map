@@ -427,6 +427,12 @@ button:disabled, input:disabled { opacity: 0.55; cursor: not-allowed; }
   transform: translateX(-50%);
   pointer-events: none;
 }
+@media (max-width: 360px) {
+  .map-marker .marker-label {
+    padding: 1px 2px;
+    font-size: 10px;
+  }
+}
 /* ---------- V4 · 彩墨地图 (mineral pigment on 宣纸) ---------------------
    Layer order inside .map-shell:
      1 map canvas  2 pigment blooms  3 paper grain
@@ -934,4 +940,3 @@ button:disabled, input:disabled { opacity: 0.55; cursor: not-allowed; }
 @media (prefers-reduced-motion: reduce) {
   * { transition-duration: 0.01ms !important; animation: none !important; }
 }
-
