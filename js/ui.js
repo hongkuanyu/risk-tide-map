@@ -300,6 +300,10 @@
 
       const riskValue = result.valid ? result.risk : 0;
       const color = global.RiskTideMapUtils.riskColor(riskValue);
+      const live = 'rgb(' + color[0] + ',' + color[1] + ',' + color[2] + ')';
+      this.elements.risk.style.color = live;
+      const headingEm = document.querySelector('.panel-heading h1 em');
+      if (headingEm) headingEm.style.color = live;
       this.elements.riskFill.style.width = riskValue + '%';
       this.elements.riskFill.style.background = 'linear-gradient(90deg, rgba(' + color[0] + ',' + color[1] + ',' + color[2] + ',0.25), rgba(' + color[0] + ',' + color[1] + ',' + color[2] + ',0.98))';
       this.elements.riskBadge.textContent = result.valid ? result.label : '等待路线';

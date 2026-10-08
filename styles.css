@@ -6,12 +6,12 @@
   --ink-soft: #4e514a;
   --ink-faint: #77776f;
   --line: rgba(32, 35, 31, 0.16);
-  --safe: #4e6257;
-  --safe-bright: #4e6257;
+  --safe: #6b6d67;
+  --safe-bright: #6b6d67;
   --gold: #7c705c;
   --warm: #71634f;
   --danger: #8e5146;
-  --live: var(--safe);
+  --live: var(--ink);
   --shadow: none;
   --serif: "Songti SC", "Noto Serif SC", "STSong", "SimSun", serif;
 }
@@ -159,7 +159,7 @@ button:disabled, input:disabled { opacity: 0.55; cursor: not-allowed; }
   transition: background 180ms ease, border-color 180ms ease, color 180ms ease;
 }
 
-.scenario-chip:hover { border-color: rgba(23, 109, 134, 0.4); color: var(--ink); }
+.scenario-chip:hover { border-color: var(--ink-soft); color: var(--ink); }
 
 .scenario-chip[aria-pressed="true"] {
   background: transparent;
@@ -197,7 +197,7 @@ button:disabled, input:disabled { opacity: 0.55; cursor: not-allowed; }
 .departure-badge span:last-of-type { font-size: 11.5px; color: var(--ink-soft); }
 
 .departure-badge { position: relative; cursor: pointer; }
-.departure-badge:focus-within { border-color: rgba(23, 109, 134, 0.45); }
+.departure-badge:focus-within { border-color: var(--ink-soft); }
 .departure-time-picker {
   position: absolute;
   inset: 0;
@@ -225,8 +225,8 @@ button:disabled, input:disabled { opacity: 0.55; cursor: not-allowed; }
 .data-pill i {
   width: 6px;
   height: 6px;
-  border-radius: 50%;
-  background: var(--safe);
+  border-radius: 0;
+  background: var(--ink-soft);
   box-shadow: none;
 }
 
@@ -255,13 +255,13 @@ button:disabled, input:disabled { opacity: 0.55; cursor: not-allowed; }
   gap: 10px;
   min-width: 0;
   padding: 3px 8px;
-  border-radius: 10px;
+  border-radius: 0;
 }
 
 .search-field:focus-within { background: rgba(32, 35, 31, 0.035); }
 .search-dot { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; }
-.search-dot-origin { background: var(--danger); box-shadow: 0 0 0 3px rgba(179, 53, 47, 0.16); }
-.search-dot-dest { background: var(--safe); box-shadow: 0 0 0 3px rgba(23, 109, 134, 0.16); }
+.search-dot-origin { background: var(--ink); box-shadow: none; }
+.search-dot-dest { background: var(--danger); box-shadow: none; }
 .search-input-wrap { display: grid; gap: 1px; min-width: 0; }
 .search-input-wrap label { color: var(--ink-faint); font-size: 10.5px; letter-spacing: 0.14em; }
 
@@ -333,9 +333,9 @@ button:disabled, input:disabled { opacity: 0.55; cursor: not-allowed; }
 .amap-suggestion {
   z-index: 900 !important;
   border: 1px solid rgba(23, 27, 34, 0.16) !important;
-  border-radius: 12px !important;
+  border-radius: 0 !important;
   background: rgba(252, 249, 242, 0.99) !important;
-  box-shadow: 0 24px 50px -30px rgba(20, 26, 34, 0.6) !important;
+  box-shadow: none !important;
   font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif !important;
 }
 
@@ -349,7 +349,7 @@ button:disabled, input:disabled { opacity: 0.55; cursor: not-allowed; }
 .amap-lib-autocomplete li:hover,
 .amap-lib-autocomplete li.active,
 .amap-suggestion li:hover {
-  background: rgba(23, 109, 134, 0.12) !important;
+  background: rgba(32, 35, 31, 0.08) !important;
   color: #171b22 !important;
 }
 .available-time-input {
@@ -358,7 +358,7 @@ button:disabled, input:disabled { opacity: 0.55; cursor: not-allowed; }
   margin: 0 3px;
   padding: 2px 6px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 0;
   background: rgba(255, 255, 255, 0.62);
   color: var(--ink);
   font: inherit;
@@ -368,7 +368,7 @@ button:disabled, input:disabled { opacity: 0.55; cursor: not-allowed; }
   outline: 0;
 }
 
-.available-time-input:focus-visible { outline: 2px solid var(--safe); outline-offset: 2px; }
+.available-time-input:focus-visible { outline: 2px solid var(--ink-soft); outline-offset: 2px; }
 .available-time-input::-webkit-outer-spin-button,
 .available-time-input::-webkit-inner-spin-button { opacity: 0.5; }
 /* ---------- stage ---------- */
@@ -549,8 +549,8 @@ button:disabled, input:disabled { opacity: 0.55; cursor: not-allowed; }
 
 .map-legend span { display: inline-flex; align-items: center; gap: 7px; }
 .legend-dot { width: 9px; height: 9px; border-radius: 50%; }
-.legend-dot.safe { background: var(--safe); box-shadow: 0 0 0 3px rgba(23, 109, 134, 0.16); }
-.legend-dot.station { background: var(--danger); box-shadow: 0 0 0 3px rgba(179, 53, 47, 0.16); }
+.legend-dot.safe { background: var(--ink); box-shadow: none; }
+.legend-dot.station { background: var(--danger); box-shadow: none; }
 .legend-line { width: 18px; height: 3px; border-radius: 3px; background: var(--live); }
 
 .map-status {
@@ -580,15 +580,15 @@ button:disabled, input:disabled { opacity: 0.55; cursor: not-allowed; }
   width: min(420px, calc(100% - 40px));
   padding: 14px 18px 16px;
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: 0;
   background: rgba(250, 246, 238, 0.88);
-  box-shadow: var(--shadow);
+  box-shadow: none;
   opacity: 0;
   transform: translate(-50%, 12px);
   transition: opacity 500ms ease, transform 500ms ease;
   pointer-events: none;
   text-align: center;
-  backdrop-filter: blur(8px);
+  backdrop-filter: none;
 }
 
 .showcase-overlay.is-active { opacity: 1; transform: translate(-50%, 0); }
@@ -746,7 +746,7 @@ button:disabled, input:disabled { opacity: 0.55; cursor: not-allowed; }
 }
 
 .field input:focus-visible,
-.field select:focus-visible { outline: 2px solid var(--safe); outline-offset: 2px; }
+.field select:focus-visible { outline: 2px solid var(--ink-soft); outline-offset: 2px; }
 .field input[type="range"] { min-height: auto; padding: 0; border: 0; background: transparent; accent-color: var(--live); }
 
 .form-grid { display: grid; gap: 11px; }
@@ -891,7 +891,7 @@ button:disabled, input:disabled { opacity: 0.55; cursor: not-allowed; }
   .scenario-chip { flex: 0 0 auto; }
   .topbar-meta { order: 3; margin-left: auto; width: auto; justify-content: flex-end; }
   .departure-badge { position: relative; cursor: pointer; }
-.departure-badge:focus-within { border-color: rgba(23, 109, 134, 0.45); }
+.departure-badge:focus-within { border-color: var(--ink-soft); }
 .departure-time-picker {
   position: absolute;
   inset: 0;

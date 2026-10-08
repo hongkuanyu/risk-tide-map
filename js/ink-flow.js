@@ -4,7 +4,13 @@
 
   const config = global.RiskTideConfig;
   function clamp(value, min, max) { return Math.min(max, Math.max(min, value)); }
-  function riskColour(risk) {
+  function smoothstep(edge0, edge1, value) {
+    const t = clamp((value - edge0) / (edge1 - edge0), 0, 1);
+    return t * t * (3 - 2 * t);
+  }
+
+  /* 唯一色源：淡墨 -> 灰墨 -> 浓墨 -> 焦墨 -> 焦墨+朱砂（OKLab 连续插值）。 */
+  function inkColour(risk) {
     const rgb = [0, 0, 0];
     const renderer = global.RiskTideNationInk;
     if (renderer && typeof renderer.riskColour === 'function') {
@@ -12,7 +18,7 @@
     } else {
       rgb[0] = 43; rgb[1] = 43; rgb[2] = 40;
     }
-    return 'rgb(' + rgb.join(',') + ')';
+    return { r: rgb[0], g: rgb[1], b: rgb[2], str: 'rgb(' + rgb.join(',') + ')' };
   }
 
   class InkFlow {
@@ -100,6 +106,7 @@
           forward.push({ x: start.x + (end.x - start.x) * t, y: start.y + (end.y - start.y) * t });
         }
       }
+      /* 终点 -> 起点：墨从目的地向出发地渗开 */
       this.points = [];
       for (let i = forward.length - 1; i >= 0; i -= 1) this.points.push(forward[i]);
     }
@@ -128,7 +135,9 @@
       this.framePending = false;
     }
 
-    drawRibbon(limit, baseWidth, alpha, colour) {
+    /* 一层湿墨笔触：头部饱满、尾部渐淡，边缘有轻微的宽度 / 浓淡变化，
+       sharp=0 为柔软墨晕，sharp=1 为稳定墨骨。 */
+    drawRibbon(limit, baseWidth, alpha, colour, sharp) {
       const ctx = this.ctx;
       const points = this.points;
       if (points.length < 2 || limit < 1) return;
@@ -140,6 +149,9 @@
         visible.push({ x: a.x + (b.x - a.x) * tEnd, y: a.y + (b.y - a.y) * tEnd });
       }
       if (visible.length < 2) return;
+      const sh = sharp === undefined ? 0.5 : sharp;
+      const fadeStart = 0.15 + sh * 0.55;
+      const minFrac = 0.12 + sh * 0.16;
       const left = [], right = [];
       for (let i = 0; i < visible.length; i += 1) {
         const before = visible[Math.max(0, i - 1)];
@@ -148,7 +160,8 @@
         const dy = after.y - before.y;
         const length = Math.hypot(dx, dy) || 1;
         const t = i / Math.max(1, visible.length - 1);
-        const taper = 0.18 + 0.82 * Math.pow(Math.sin(Math.PI * t), 0.42);
+        const tailFade = 1 - smoothstep(fadeStart, 1, t);
+        const taper = minFrac + (1 - minFrac) * tailFade;
         const edge = 1 + Math.sin(t * 17 + 0.7) * 0.055 + Math.sin(t * 5.2 + 1.8) * 0.035;
         const half = baseWidth * taper * edge * 0.5;
         const nx = -dy / length, ny = dx / length;
@@ -163,27 +176,35 @@
       ctx.globalAlpha = alpha;
       ctx.fillStyle = colour;
       ctx.fill();
+      ctx.globalAlpha = 1;
     }
 
-    drawHead(progress, colour) {
+    /* 墨头：生长中的湿墨，稍浓、略湿，压在纸上向四周轻微渗开，不发光。 */
+    drawHead(progress, ink) {
       if (progress >= 1 || this.points.length < 2) return;
       const index = Math.min(this.points.length - 2, Math.floor(progress * (this.points.length - 1)));
       const t = progress * (this.points.length - 1) - index;
       const a = this.points[index], b = this.points[index + 1];
       const x = a.x + (b.x - a.x) * t;
       const y = a.y + (b.y - a.y) * t;
-      const angle = Math.atan2(b.y - a.y, b.x - a.x);
-      const nx = -Math.sin(angle), ny = Math.cos(angle);
-      const tail = 11;
-      const halfWidth = 1.9;
-      this.ctx.beginPath();
-      this.ctx.moveTo(x + Math.cos(angle) * 3, y + Math.sin(angle) * 3);
-      this.ctx.lineTo(x - Math.cos(angle) * tail + nx * halfWidth, y - Math.sin(angle) * tail + ny * halfWidth);
-      this.ctx.lineTo(x - Math.cos(angle) * tail - nx * halfWidth, y - Math.sin(angle) * tail - ny * halfWidth);
-      this.ctx.closePath();
-      this.ctx.globalAlpha = 0.78;
-      this.ctx.fillStyle = colour;
-      this.ctx.fill();
+      const cfg = (config.ink && config.ink.route && config.ink.route.head) || {};
+      const radius = cfg.radius === undefined ? 3.4 : cfg.radius;
+      const alpha = cfg.alpha === undefined ? 0.92 : cfg.alpha;
+      const ctx = this.ctx;
+      const halo = ctx.createRadialGradient(x, y, 0, x, y, radius * 3.4);
+      halo.addColorStop(0, 'rgba(' + ink.r + ',' + ink.g + ',' + ink.b + ',' + (alpha * 0.30).toFixed(3) + ')');
+      halo.addColorStop(0.6, 'rgba(' + ink.r + ',' + ink.g + ',' + ink.b + ',' + (alpha * 0.12).toFixed(3) + ')');
+      halo.addColorStop(1, 'rgba(' + ink.r + ',' + ink.g + ',' + ink.b + ',0)');
+      ctx.fillStyle = halo;
+      ctx.beginPath();
+      ctx.arc(x, y, radius * 3.4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = ink.str;
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
     }
 
     draw() {
@@ -191,12 +212,20 @@
       if (this.routeDirty) this.rebuild();
       this.ctx.clearRect(0, 0, this.width, this.height);
       if (this.points.length < 2) return;
-      const colour = riskColour(this.risk);
+      const ink = inkColour(this.risk);
       const limit = (this.points.length - 1) * this.progress;
-      this.drawRibbon(limit, 8.5, 0.11, colour);
-      this.drawRibbon(limit, 4.8, 0.27, colour);
-      this.drawRibbon(limit, 1.25, 0.9, colour);
-      this.drawHead(this.progress, colour);
+      const route = (config.ink && config.ink.route) || {};
+      const halo = route.halo || { width: 15, alpha: 0.10 };
+      const body = route.body || { width: 6.4, alpha: 0.32 };
+      const bone = route.bone || { width: 1.7, alpha: 0.90 };
+      /* 第一层 墨晕：湿墨扩散 */
+      this.drawRibbon(limit, halo.width, halo.alpha, ink.str, 0);
+      /* 第二层 墨肉：宽度 / 浓淡变化 */
+      this.drawRibbon(limit, body.width, body.alpha, ink.str, 0.55);
+      /* 第三层 墨骨：细、稳定、深 */
+      this.drawRibbon(limit, bone.width, bone.alpha, ink.str, 1);
+      /* 墨头：只在生长过程中出现，写完后静置 */
+      if (this.progress < 1) this.drawHead(this.progress, ink);
     }
 
     frame(timestamp) {
@@ -206,7 +235,10 @@
       this.lastTime = timestamp;
       const tau = this.riskTarget >= this.risk ? 1.4 : 2.8;
       this.risk += (this.riskTarget - this.risk) * (1 - Math.exp(-dt / tau));
-      if (!this.reducedMotion) this.progress = Math.min(1, this.progress + dt / 4.2);
+      if (!this.reducedMotion) {
+        const grow = (config.ink && config.ink.route && config.ink.route.growSeconds) || 5.2;
+        this.progress = Math.min(1, this.progress + dt / grow);
+      }
       this.draw();
       if (this.progress < 1 || Math.abs(this.riskTarget - this.risk) > 0.05) this.requestFrame();
     }

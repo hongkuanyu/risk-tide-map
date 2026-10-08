@@ -38,26 +38,32 @@
     return x * x * (3 - 2 * x);
   }
 
-  /* Continuous multi-stop risk ramp: 青碧 -> 青绿 -> 金 -> 金橙 -> 橙朱 ->
-     朱砂 -> 深朱红, interpolated with smoothstep so colour never jumps.
-     Shared with js/silk-route.js and the risk bar in the panel. */
+  /* 唯一色源：淡墨 -> 灰墨 -> 浓墨 -> 焦墨 -> 焦墨+朱砂。
+     优先委托 js/nation-ink.js 的 OKLab 连续插值，使风险读条 / 高德路线
+     与全国墨场、单程墨线共用同一套颜色；不可用时回退到同一 ramp 线性插值。 */
   function riskColor(risk) {
-    const colors = config.colors;
     const value = Math.max(0, Math.min(100, Number(risk) || 0));
-    const ramp = config.silk && config.silk.riskRamp;
-    if (!ramp || !ramp.length) {
-      if (value <= 30) return colors.safe;
-      if (value <= 70) return mixRgb(colors.safe, colors.gold, (value - 30) / 40);
-      return mixRgb(colors.gold, colors.danger, (value - 70) / 30);
+    const ramp = (config.ink && config.ink.ramp) || (config.silk && config.silk.riskRamp);
+    if (ramp && ramp.length) {
+      const renderer = global.RiskTideNationInk;
+      if (renderer && typeof renderer.riskColour === 'function') {
+        const out = [0, 0, 0];
+        renderer.riskColour(value, out);
+        return out;
+      }
+      const t = value / 100;
+      let a = ramp[0];
+      let b = ramp[ramp.length - 1];
+      for (let i = 1; i < ramp.length; i += 1) {
+        if (t <= ramp[i].at) { a = ramp[i - 1]; b = ramp[i]; break; }
+      }
+      const span = (b.at - a.at) || 1;
+      return mixRgb(a.rgb, b.rgb, smoothstep01((t - a.at) / span));
     }
-    const t = value / 100;
-    let a = ramp[0];
-    let b = ramp[ramp.length - 1];
-    for (let i = 1; i < ramp.length; i += 1) {
-      if (t <= ramp[i].at) { a = ramp[i - 1]; b = ramp[i]; break; }
-    }
-    const span = (b.at - a.at) || 1;
-    return mixRgb(a.rgb, b.rgb, smoothstep01((t - a.at) / span));
+    const colors = config.colors;
+    if (value <= 30) return colors.safe;
+    if (value <= 70) return mixRgb(colors.safe, colors.gold, (value - 30) / 40);
+    return mixRgb(colors.gold, colors.danger, (value - 70) / 30);
   }
 
   function routeGeometry(route, fallback) {
