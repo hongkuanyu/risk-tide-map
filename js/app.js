@@ -269,6 +269,18 @@
       });
     }
 
+    /* 单程墨线 hover：只轻微增强墨骨对比，不发光 / 放大 / 弹窗 */
+    if (inkFlow && shell) {
+      shell.addEventListener('pointermove', function (event) {
+        if (event.target.closest('button, input, select, a')) { inkFlow.setHover(0); return; }
+        const rect = shell.getBoundingClientRect();
+        inkFlow.setHover(inkFlow.hoverAt(event.clientX - rect.left, event.clientY - rect.top));
+      });
+      shell.addEventListener('pointerleave', function () {
+        inkFlow.setHover(0);
+      });
+    }
+
     function syncSearch() {
       if (global.RiskTideSearch) global.RiskTideSearch.sync();
     }
