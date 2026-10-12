@@ -117,13 +117,17 @@
       if (ink.textureOpacity !== undefined) {
         shell.style.setProperty('--ink-texture-opacity', String(ink.textureOpacity));
       }
-      /* 图例的墨色渐变直接取自 config.ink.ramp（唯一色源），
-         免得"墨色 = 时间余量"的说明和实际墨色各写一套。 */
-      if (config.ink && config.ink.ramp && config.ink.ramp.length) {
-        const stops = config.ink.ramp.map(function (stop) {
+      /* 图例色条直接取自配置里的色阶（唯一色源）：
+         路线墨线的风险通道是"流光"（coreRamp），所以图例用光脉色阶。 */
+      const ramps = [config.ink && config.ink.coreRamp, config.ink && config.ink.ramp];
+      for (let r = 0; r < ramps.length; r += 1) {
+        const ramp = ramps[r];
+        if (!ramp || !ramp.length) continue;
+        const stops = ramp.map(function (stop) {
           return 'rgb(' + stop.rgb.join(',') + ') ' + Math.round(stop.at * 100) + '%';
         });
         shell.style.setProperty('--ink-ramp-gradient', 'linear-gradient(90deg, ' + stops.join(', ') + ')');
+        break;
       }
     }
     applyInkMapTheme();

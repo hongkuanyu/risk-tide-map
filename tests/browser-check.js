@@ -201,19 +201,46 @@ window.__t = {
       l: Math.round(minX), r: Math.round(maxX), t: Math.round(minY), b: Math.round(maxY) };
   },
   /* 芯光层（screen 混合的独立画布）：非真实路线不允许发光 */
-  glowStats: function () {
+  glowStats: function (threshold) {
     const cv = document.getElementById('ink-glow-canvas');
     if (!cv) return { exists: false };
+    const min = threshold === undefined ? 8 : threshold;
     const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
     let count = 0, max = 0, sr = 0, sg = 0, sb = 0;
     for (let i = 0; i < d.length; i += 4) {
       const a = d[i + 3];
       if (a > max) max = a;
-      if (a >= 8) { count += 1; sr += d[i]; sg += d[i + 1]; sb += d[i + 2]; }
+      if (a >= min) { count += 1; sr += d[i]; sg += d[i + 1]; sb += d[i + 2]; }
     }
     return { exists: true, count: count, maxAlpha: max,
       rgb: count ? [Math.round(sr / count), Math.round(sg / count), Math.round(sb / count)] : null,
       ratio: Math.round(cv.width / cv.getBoundingClientRect().width * 100) / 100 };
+  },
+  /* 冷白高光的位置：把亮段质心投影到当前中轴线上，得到沿线位置 t（0=终点，1=起点）。
+     高光"移动"不能用像素计数测（数量恒定），必须测位置。 */
+  brightTrack: function (threshold) {
+    const cv = document.getElementById('ink-glow-canvas');
+    if (!cv) return { count: 0, t: null };
+    const min = threshold === undefined ? 210 : threshold;
+    const img = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height);
+    const w = cv.width, h = cv.height, d = img.data;
+    let count = 0, sx = 0, sy = 0;
+    for (let y = 0; y < h; y += 2) {
+      for (let x = 0; x < w; x += 2) {
+        if (d[(y * w + x) * 4 + 3] >= min) { count += 1; sx += x; sy += y; }
+      }
+    }
+    if (!count) return { count: 0, t: null };
+    const dpr = w / cv.getBoundingClientRect().width;
+    const cx = sx / count / dpr;
+    const cy = sy / count / dpr;
+    const pts = window.RiskTideApp.inkFlow.points;
+    let best = Infinity, bestIndex = 0;
+    for (let i = 0; i < pts.length; i += 1) {
+      const dist = Math.hypot(pts[i].x - cx, pts[i].y - cy);
+      if (dist < best) { best = dist; bestIndex = i; }
+    }
+    return { count: count, t: Math.round(bestIndex / Math.max(1, pts.length - 1) * 1000) / 1000 };
   },
   /* 把浮层/徽标等 DOM 覆盖物藏掉，避免污染画布指纹 */
   hideOverlays: function () {
@@ -1233,8 +1260,21 @@ async function scenarioFlow(page) {
   await page.evaluate(`window.__t.setMode('taxi')`);
   await sleep(1400);
   /* 写线结束后再看静止态：等动画走完 */
+  /* headless 下新建的标签页可能是后台页（document.hidden = true），
+     不置前/不强制可见的话动画根本不会跑 —— 这里两件都做，保证测的是渲染本身。 */
+  await page.browser.send('Page.bringToFront', {}, page.sessionId);
+  /* 确定性方向断言：把流动高光临时收成 1 段、速度调成 0.1/s，
+     这样它在采样区间内不会回绕，位置 t 必须单调递增（终点 → 起点）。 */
+  await page.evaluate(`(() => {
+    const cfg = window.RiskTideConfig.ink.route.core.highlight;
+    cfg.count = 1;
+    cfg.speed = 0.1;
+    cfg.speedRisk = 0;
+    return 'ok';
+  })()`);
   await page.evaluate(`(() => {
     const f = window.RiskTideApp.inkFlow;
+    f.setVisible(true);
     f.reducedMotion = false;
     f.progress = 1;
     f.elapsed = 0;
@@ -1250,9 +1290,10 @@ async function scenarioFlow(page) {
       const idx = Math.max(4, Math.floor(f.points.length * 0.45));
       const soft = window.__t.widthAt(idx, 8);
       const stats = window.__t.inkStats(8);
-      const glow = window.__t.glowStats();
+      const glow = window.__t.glowStats(8);          // 主光脉 + 柔光：应当持续存在
+      const bright = window.__t.brightTrack(210);    // 冷白高光：测它的沿线位置（不是数量）
       const box = window.__t.centerBox();
-      return { soft: soft, pixels: stats.count, glow: glow.count,
+      return { soft: soft, pixels: stats.count, glow: glow.count, bright: bright.count, brightT: bright.t,
         box: [box.l, box.t, box.r, box.b], elapsed: Math.round(f.elapsed * 10) / 10 };
     })()`);
   };
@@ -1270,9 +1311,18 @@ async function scenarioFlow(page) {
   /* 真正会流动的是两样东西：① 光在笔画里游走（柔光像素量涨落）② 墨体轮廓的缓慢鼓动。
      飞白的横向偏移不随呼吸变化，所以"像素量"只小幅波动，光斑才是主要观感。 */
   const glows = samples.map((s) => s.glow);
+  const brights = samples.map((s) => s.bright);
   const glowSpread = (Math.max.apply(null, glows) - Math.min.apply(null, glows)) / Math.max(1, Math.max.apply(null, glows));
-  check('静止态流动：光在笔画里游走（柔光像素量涨落 ≥ 15%）', glowSpread >= 0.15,
+  const brightSpread = (Math.max.apply(null, brights) - Math.min.apply(null, brights)) / Math.max(1, Math.max.apply(null, brights));
+  /* 规范要求：主光脉"持续存在"（总量基本恒定），只有冷白高光沿笔画单向推进。 */
+  check('静止态流动：主光脉持续存在（柔光像素量基本恒定，波动 ≤ 12%）', glowSpread <= 0.12 && glows[0] > 500,
     'glow=' + JSON.stringify(glows) + ' spread=' + Math.round(glowSpread * 100) + '%');
+  const brightTs = samples.map((s) => s.brightT);
+  const tracked = brightTs.every((t) => t !== null) ? brightTs : null;
+  check('静止态流动：冷白高光单向推进（亮段位置 t 递增、总位移 > 0.05）',
+    tracked && tracked[tracked.length - 1] - tracked[0] > 0.05
+      && tracked.every((t, i) => i === 0 || t >= tracked[i - 1] - 0.002),
+    'brightT=' + JSON.stringify(brightTs) + ' count=' + JSON.stringify(brights));
   check('静止态流动：墨迹量随时间变化（≥0.5%）', pixelSpread >= 0.005,
     'pixels=' + JSON.stringify(pixels) + ' spread=' + Math.round(pixelSpread * 100) + '%');
   check('静止态流动：幅度克制（宽度变化 ≤ 25%，不是闪烁）', spread <= 0.25,

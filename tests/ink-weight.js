@@ -37,10 +37,11 @@ async function main() {
     await sleep(700);
   }
   /* RISK_HIGH=1：把计划出发时间压紧，用同一段几何看高风险下的笔色（芯光转暖） */
-  if (process.env.RISK_HIGH === '1') {
+  /* RISK_HIGH=1 → 危险（赤）；RISK_HIGH=mid → 临界（金） */
+  if (process.env.RISK_HIGH === '1' || process.env.RISK_HIGH === 'mid') {
     await page.evaluate(`(() => {
       const slider = document.getElementById('departure-slider');
-      slider.value = '60';
+      slider.value = ${process.env.RISK_HIGH === 'mid' ? '102' : '60'};
       slider.dispatchEvent(new Event('input', { bubbles: true }));
       return 'ok';
     })()`);
