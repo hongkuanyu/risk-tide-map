@@ -100,6 +100,8 @@
       this.canvasStage = options.canvasStage;
       this.onMovement = options.onMovement || function () {};
       this.onStatus = options.onStatus || function () {};
+      /* 与高德控制器保持同一套接口；降级底图不会真的规划路线。 */
+      this.onRoutesReady = options.onRoutesReady || function () {};
 
       if (!this.container) return Promise.reject(new Error('缺少地图容器。'));
 
@@ -306,6 +308,22 @@
 
     getEndpoints() { return this.endpoints; }
 
+    /* OpenStreetMap 降级底图没有在线路线规划：内置几何就是全部可用数据。 */
+    supportsPlanning() {
+      return false;
+    }
+
+    isNationView() {
+      const search = global.location ? global.location.search : '';
+      if (/[?&]route=1(?:&|$)/.test(search)) return false;
+      return !!(config.nation && (config.nation.enabled || /[?&]nation=1(?:&|$)/.test(search)));
+    }
+
+    /* 无真实道路几何时折线只作弱化虚线示意；全国视野下保持不可见。 */
+    previewVisible() {
+      return this.routePreview && !this.isNationView();
+    }
+
     repositionMarkers() {
       if (!this.markers.campus || !this.markers.station) return;
       this.markers.campus.setLngLat(this.endpoints.campus.coordinate);
@@ -336,7 +354,10 @@
 
       if (this.map && this.map.getSource && this.map.getSource('risk-route')) {
         this.map.getSource('risk-route').setData(this.toGeoJSON(this.route));
-        this.map.setPaintProperty('risk-route-core', 'line-dasharray', this.routePreview ? [1.2, 1.4] : [1.2, 1.8]);
+        if (this.map.getLayer('risk-route-core')) {
+          this.map.setPaintProperty('risk-route-core', 'line-dasharray', this.routePreview ? [2, 3] : [1.2, 1.8]);
+          this.map.setPaintProperty('risk-route-core', 'line-opacity', this.previewVisible() ? 0.34 : 0);
+        }
       }
     }
 
@@ -369,7 +390,9 @@
       this.risk = risk;
       if (!this.map || !this.ready) return;
       const color = riskColor(risk);
-      const opacity = 0;   // InkFlowRenderer 拥有全部视觉
+      /* InkFlowRenderer 拥有全部视觉；只有在"无真实道路几何"时，
+         才让折线以弱化虚线露出来，明确这是示意而不是真实路线。 */
+      const opacity = this.previewVisible() ? 0.34 : 0;
       const rasterOpacity = Math.max(0.48, config.map.rasterOpacity - Math.max(0, risk - 58) / 42 * 0.10);
 
       if (this.map.getLayer('risk-route-core')) {

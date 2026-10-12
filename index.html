@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#efe8dc">
   <meta name="description" content="风险潮汐：以时间余量，观看全国出行风险的水墨潮位。">
   <title>风险潮汐 · 全国时间风险地图</title>
-  <link rel="stylesheet" href="vendor/maplibre-gl.css?v=85">
-  <link rel="stylesheet" href="styles.css?v=85">
+  <link rel="stylesheet" href="vendor/maplibre-gl.css?v=87">
+  <link rel="stylesheet" href="styles.css?v=87">
 </head>
 <body>
   <!-- 彩墨地图颜料分离滤镜：按“色相倾向”把底图分成水系 / 植被 / 暗部三层，
@@ -135,18 +135,30 @@
       <p class="search-hint" id="search-hint" role="status" aria-live="polite"></p>
     </section>
     <main class="stage">
-      <section class="map-shell" id="map-shell" data-risk-level="unknown" aria-label="出行风险路线地图">
+      <section class="map-shell" id="map-shell" data-risk-level="unknown" tabindex="0"
+        aria-label="出行风险路线地图" aria-describedby="route-tip">
         <div id="map" class="map"></div>
         <canvas id="silk-canvas" class="silk-canvas" aria-hidden="true"></canvas>
+        <!-- 芯光单独一层：墨层是 multiply（只能压暗），发光必须靠 screen 混合 -->
+        <canvas id="ink-glow-canvas" class="ink-glow-canvas" aria-hidden="true"></canvas>
         <canvas id="nation-canvas" class="nation-canvas" aria-hidden="true"></canvas>
         <div class="map-vignette" aria-hidden="true"></div>
         <div class="map-grid" aria-hidden="true"></div>
+        <!-- 墨线读数浮层：悬停 / 点击 / 键盘共用。墨色只表示整段行程的时间余量。 -->
+        <div class="route-tip" id="route-tip" role="tooltip" aria-hidden="true">
+          <strong class="route-tip-title"></strong>
+          <dl class="route-tip-rows"></dl>
+          <p class="route-tip-note" hidden></p>
+        </div>
         <div class="map-legend" aria-label="地图图例">
           <span><i class="legend-dot safe"></i>起点</span>
-          <span><i class="legend-dot station"></i>终点 / 风险源</span>
-          <span><i class="legend-line"></i>风险潮汐</span>
+          <span><i class="legend-dot station"></i>终点</span>
+          <span><i class="legend-line"></i>墨色 = 全程时间余量（非实时路况）</span>
         </div>
-        <div class="map-status" id="status-line" role="status" data-type="normal"></div>
+        <div class="map-notices">
+          <div class="route-authenticity" id="route-authenticity" role="status" hidden></div>
+          <div class="map-status" id="status-line" role="status" data-type="normal"></div>
+        </div>
       </section>
 
       <aside class="control-panel" id="control-panel" aria-label="出行风险控制面板">
@@ -254,22 +266,23 @@
   </div>
 
   <noscript>此页面需要 JavaScript 才能运行地图与风险计算。</noscript>
-  <script src="vendor/maplibre-gl.js?v=85"></script>
-  <script src="data/config.js?v=85"></script>
-  <script src="data/routes.js?v=85"></script>
-  <script src="js/risk.js?v=85"></script>
-  <script src="js/map.js?v=85"></script>
-  <script src="js/amap-map.js?v=85"></script>
-  <script src="js/silk-route.js?v=85"></script>
-  <script src="js/ink-flow.js?v=85"></script>
-  <script src="data/cities.js?v=85"></script>
-  <script src="js/nation-risk.js?v=85"></script>
-  <script src="js/nation-ink.js?v=85"></script>
-  <script src="js/ink-gl.js?v=85"></script>
-  <script src="js/warm-ui.js?v=85"></script>
-  <script src="js/location-search.js?v=85"></script>
-  <script src="js/ui.js?v=85"></script>
-  <script src="js/app.js?v=85"></script>
+  <script src="vendor/maplibre-gl.js?v=87"></script>
+  <script src="data/config.js?v=87"></script>
+  <script src="data/routes.js?v=87"></script>
+  <script src="js/risk.js?v=87"></script>
+  <script src="js/map.js?v=87"></script>
+  <script src="js/amap-map.js?v=87"></script>
+  <script src="js/silk-route.js?v=87"></script>
+  <script src="js/ink-flow.js?v=87"></script>
+  <script src="data/cities.js?v=87"></script>
+  <script src="js/nation-risk.js?v=87"></script>
+  <script src="js/nation-ink.js?v=87"></script>
+  <script src="js/ink-gl.js?v=87"></script>
+  <script src="js/warm-ui.js?v=87"></script>
+  <script src="js/route-tip.js?v=87"></script>
+  <script src="js/location-search.js?v=87"></script>
+  <script src="js/ui.js?v=87"></script>
+  <script src="js/app.js?v=87"></script>
 </body>
 </html>
 

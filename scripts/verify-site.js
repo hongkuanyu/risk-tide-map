@@ -17,6 +17,7 @@ const requiredFiles = [
   'js/map.js',
   'js/amap-map.js',
   'js/ink-flow.js',
+  'js/route-tip.js',
   'js/nation-risk.js',
   'js/nation-ink.js'
 ];
@@ -30,8 +31,11 @@ requiredFiles.forEach((relative) => {
 });
 
 const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
-['map-shell', 'nation-canvas', 'silk-canvas', 'origin-input', 'dest-input', 'hero-latest']
+['map-shell', 'nation-canvas', 'silk-canvas', 'origin-input', 'dest-input', 'hero-latest',
+  'route-tip', 'route-authenticity', 'ink-glow-canvas']
   .forEach((id) => assert.ok(html.includes(`id="${id}"`), `missing #${id}`));
+assert.ok(html.includes('tabindex="0"'), 'map shell must stay keyboard focusable');
+assert.ok(html.includes('非实时路况'), 'the legend must explain what the ink colour means');
 assert.ok(html.includes('class="brand-mark"'), 'brand mark is missing');
 assert.ok(html.includes('data-view="nation"') && html.includes('data-view="route"'), 'view navigation is incomplete');
 assert.ok(!html.includes('particle-canvas') && !html.includes('particles.js'), 'legacy particle renderer is still wired');
@@ -70,14 +74,41 @@ assert.ok(!inkFlow.includes('Math.random('), 'route renderer must not use frame-
 
 const config = fs.readFileSync(path.join(root, 'data/config.js'), 'utf8');
 assert.ok(config.includes('enabled: true') && config.includes('defaultWindowMinutes: 480'), 'nationwide view is not the default');
+/* 单程墨线必须区分"真实道路几何"和"仅起终点示意" */
+assert.ok(!inkFlow.includes("return endpoints.campus && endpoints.station"),
+  'ink-flow must not fall back to a start/end straight line as if it were a road route');
+assert.ok(inkFlow.includes('getHintCoordinates'), 'ink-flow needs a separate hint geometry');
+assert.ok(inkFlow.includes("kind: 'preview'") || inkFlow.includes("'preview'"),
+  'ink-flow must know the preview state');
+assert.ok(inkFlow.includes('WRITE_DT_CAP'), 'write animation must use a wall-clock budget, not raw frames');
+assert.ok(inkFlow.includes('hitTest'), 'ink-flow must expose hit testing for hover / tap / keyboard');
+assert.ok(inkFlow.includes('coreColour') && inkFlow.includes('drawCore'),
+  'the luminous core channel (risk-driven) is missing from the route ink');
+assert.ok(inkFlow.includes('glowCtx'), 'the additive glow layer must be drawn on its own canvas');
+const app = fs.readFileSync(path.join(root, 'js/app.js'), 'utf8');
+assert.ok(app.includes('planSeq') && app.includes('guardFor'), 'route planning needs a request guard');
+assert.ok(app.includes('supportsPlanning()'), 'planning capability must be checked before treating a plan as failed');
+assert.ok(app.includes('requestInkFrame()'), 'map movement must request a redraw of the ink line');
+assert.ok(app.includes('updateRouteNotice'), 'route authenticity notice is missing');
+
 const amapMap = fs.readFileSync(path.join(root, 'js/amap-map.js'), 'utf8');
+assert.ok(amapMap.includes("'mapmove'") && amapMap.includes("'zoomchange'"),
+  'AMap needs continuous movement events so the ink line keeps up while panning / zooming');
 assert.ok(amapMap.includes('routePaddingMobile') && amapMap.includes('routePaddingDesktop'),
   'AMap route fitting must use responsive padding');
 assert.ok(fs.readFileSync(path.join(root, 'js/nation-ink.js'), 'utf8').includes('weightedRisk / totalWeight'),
   'nationwide field is not normalized by local influence');
+/* 色阶语义：从淡墨到朱砂，越往上越暗、且末端偏红（朱砂暗渗），
+   但红是"暗红"——末端的亮度必须仍然明显低于淡墨端。 */
 const pale = [0, 0, 0], dark = [0, 0, 0];
 sandbox.RiskTideNationInk.riskColour(0, pale);
 sandbox.RiskTideNationInk.riskColour(100, dark);
-assert.ok(pale[0] > dark[0] && pale[1] > dark[1], 'continuous ink palette endpoints are incorrect');
+const luminance = (rgb) => rgb[0] * 0.299 + rgb[1] * 0.587 + rgb[2] * 0.114;
+assert.ok(luminance(pale) > luminance(dark) + 40,
+  'ink palette must get clearly darker toward the risky end');
+assert.ok(pale[1] > dark[1],
+  'ink palette must lose green toward the risky end (ink, not a green ramp)');
+assert.ok((dark[0] - dark[2]) > (pale[0] - pale[2]) + 40,
+  'the risky end must carry the 朱砂 red shift');
 
 console.log('Risk Tide verification passed: resources, formulas, 43-city model, normalized ink field, particle-free END -> START stroke.');

@@ -142,6 +142,9 @@
       this.onMovement = function () {};
       this.onStatus = function () {};
       this.onRoutesReady = function () {};
+      this.lastPlanError = '';
+      this.settleTimer = 0;
+      this.planSeqSeen = 0;
       this.endpoints = {
         campus: config.endpoints.campus,
         station: config.endpoints.station
@@ -165,10 +168,31 @@
 
     getEndpoints() { return this.endpoints; }
 
-    replanRoutes() {
-      if (!this.map || !this.ready) return Promise.resolve(null);
-      if (this.fallbackMap) return Promise.resolve(null);
-      return this.planRoutes();
+    /* 有在线规划能力才允许把"规划失败"当作失败处理；
+       OpenStreetMap 降级底图只能沿用内置几何。 */
+    supportsPlanning() {
+      return !!(this.map && this.ready && !this.fallbackMap && !this.fallback
+        && global.AMap && global.AMap.Driving && global.AMap.Transfer);
+    }
+
+    /* 全国视野下不能按本地路线自动贴合，也不显示本地示意的虚线 */
+    isNationView() {
+      var nat = config.nation;
+      var search = global.location ? global.location.search : '';
+      if (/[?&]route=1(?:&|$)/.test(search)) return false;
+      return !!(nat && (nat.enabled || /[?&]nation=1(?:&|$)/.test(search)));
+    }
+
+    replanRoutes(guard) {
+      if (!this.map || !this.ready) {
+        this.lastPlanError = '地图尚未就绪';
+        return Promise.resolve(null);
+      }
+      if (this.fallbackMap) {
+        this.lastPlanError = '已降级到 OpenStreetMap，无在线路线规划';
+        return Promise.resolve(null);
+      }
+      return this.planRoutes(guard);
     }
 
     init(options) {
@@ -196,7 +220,7 @@
       return loadScript(source)
         .then(() => this.createMap())
         .then(() => {
-          if (amapConfig.autoRoute !== false) return this.planRoutes();
+          if (amapConfig.autoRoute !== false) return this.planRoutes(options.guard);
           return null;
         })
         .catch((error) => {
@@ -222,8 +246,19 @@
             this.ready = true;
             this.addMarkers();
             this.addRouteLayer();
-            this.map.on('movestart', () => { this.moving = true; this.onMovement(true); });
-            this.map.on('moveend', () => { this.moving = false; this.onMovement(false); });
+            /* AMap 2.0 只在 movestart / moveend 之间给 mapmove 与 zoomchange；
+               少了这两个事件，墨线在拖动与滚轮缩放中会停在旧投影上。 */
+            const markMoving = () => {
+              if (!this.moving) { this.moving = true; this.onMovement(true); }
+              this.scheduleSettle();
+            };
+            this.map.on('movestart', markMoving);
+            this.map.on('mapmove', markMoving);
+            this.map.on('zoomchange', markMoving);
+            this.map.on('moveend', () => {
+              this.settleNow();
+              this.onMovement(false);
+            });
             this.onStatus({ state: 'ready', message: '高德地图已加载 · 路线由高德规划' });
             resolve(this.map);
           });
@@ -231,6 +266,20 @@
           reject(error);
         }
       });
+    }
+
+    /* 事件静默一小段后视为"停下来了"，保证地图停止移动后回到低频渲染 */
+    scheduleSettle() {
+      global.clearTimeout(this.settleTimer);
+      this.settleTimer = global.setTimeout(() => this.settleNow(), 140);
+    }
+
+    settleNow() {
+      global.clearTimeout(this.settleTimer);
+      this.settleTimer = 0;
+      if (!this.moving) return;
+      this.moving = false;
+      this.onMovement(false);
     }
 
     enableFallback(message) {
@@ -325,6 +374,12 @@
       this.setRisk(this.risk);
     }
 
+    /* 无真实道路几何时：底图折线退成一条弱化虚线，绝不冒充真实路线。
+       全国视野下保持不可见，避免在 3.4 级视野里凭空多出一条本地虚线。 */
+    previewVisible() {
+      return this.routePreview && !this.isNationView();
+    }
+
     fitRoute() {
       /* 全国模式：绝不能按本地路线自动贴合，否则 setFitView 会把视野拉回无锡，
          43 座城市的墨团全落到画布之外（这就是线上看不到墨的原因）。 */
@@ -354,9 +409,16 @@
       const hex = '#' + [color[0], color[1], color[2]].map(function (channel) {
         return ('0' + Math.round(channel).toString(16)).slice(-2);
       }).join('');
+      const preview = this.previewVisible();
       if (this.routePolyline) {
         // 视觉主体完全交给 InkFlowRenderer；折线只作几何 / hit area。
-        this.routePolyline.setOptions({ strokeColor: hex, strokeOpacity: 0, strokeWeight: 1.1 });
+        this.routePolyline.setOptions({
+          strokeColor: hex,
+          strokeOpacity: preview ? 0.32 : 0,
+          strokeWeight: preview ? 1.4 : 1.1,
+          strokeStyle: preview ? 'dashed' : 'solid',
+          strokeDasharray: preview ? [6, 7] : []
+        });
       }
       if (this.routeHalo) {
         this.routeHalo.setOptions({ strokeColor: hex, strokeOpacity: 0, strokeWeight: 16 });
@@ -407,8 +469,11 @@
     getMoving() { return this.fallbackMap ? this.fallbackMap.getMoving() : this.moving; }
     getReady() { return this.fallbackMap ? this.fallbackMap.getReady() : (this.ready && !this.fallback); }
 
-    planRoutes() {
-      if (!global.AMap || !global.AMap.Driving || !global.AMap.Transfer) return Promise.resolve(null);
+    planRoutes(guard) {
+      if (!global.AMap || !global.AMap.Driving || !global.AMap.Transfer) {
+        this.lastPlanError = '高德路线规划服务未加载';
+        return Promise.resolve(null);
+      }
       const amapConfig = config.amap || {};
       const origin = toGcj(this.endpoints.campus.coordinate);
       const destination = toGcj(this.endpoints.station.coordinate);
@@ -448,6 +513,8 @@
         Promise.all(drivePromises).catch(function () { return []; }),
         transferPromise.catch(function () { return null; })
       ]).then(function (values) {
+        /* 旧请求一律丢弃：不能让更早发出的规划结果覆盖新路线 */
+        if (guard && !guard()) return null;
         const driving = values[0].filter(function (item) { return item && item.coordinates.length >= 2; });
         const transit = values[1] && values[1].coordinates.length >= 2 ? values[1] : null;
         const routes = {};
@@ -481,11 +548,20 @@
           });
         }
 
+        if (!Object.keys(routes).length) {
+          /* 服务没有返回任何可用道路几何：明确报失败，不保留旧路线 */
+          self.lastPlanError = '高德未返回可用道路几何';
+          self.onStatus({ state: 'warning', message: '高德路线规划未返回可用道路几何，已改用起终点示意。' });
+          return null;
+        }
+        self.lastPlanError = '';
         self.onRoutesReady(routes);
         self.onStatus({ state: 'ready', message: '高德地图与路线已完成规划' });
         return routes;
       }).catch(function (error) {
-        self.onStatus({ state: 'warning', message: '高德路线规划失败：' + error.message });
+        if (guard && !guard()) return null;
+        self.lastPlanError = (error && error.message) || '高德路线规划失败';
+        self.onStatus({ state: 'warning', message: '高德路线规划失败：' + self.lastPlanError });
         return null;
       });
     }

@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "risk-tide-map",
   "version": "1.0.0",
   "private": true,
@@ -6,6 +6,9 @@
   "scripts": {
     "start": "node serve.js",
     "test": "node scripts/verify-site.js",
+    "test:browser": "node tests/browser-check.js",
+    "test:all": "node scripts/verify-site.js && node tests/browser-check.js",
+    "test:shots": "node tests/capture.js",
     "build": "node scripts/verify-site.js",
     "vendor": "node scripts/vendor-maplibre.js"
   }

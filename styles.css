@@ -406,6 +406,13 @@ button:disabled, input:disabled { opacity: 0.55; cursor: not-allowed; }
   width: 40px;
   height: 52px;
 }
+/* MapLibre 用「绝对定位 + transform」摆放 marker，而上面的 position:relative 会把它
+   变回普通流内元素：第二个 marker 被第一个顶下去一个 marker 的高度（52px），
+   于是终点 marker 与墨线终点差半屏。让 MapLibre 的定位规则生效
+   （.marker-label 仍是绝对定位，父级两种定位都能作为包含块）。 */
+.map-marker.maplibregl-marker {
+  position: absolute;
+}
 .map-marker img {
   display: block;
   width: 40px;
@@ -517,6 +524,18 @@ button:disabled, input:disabled { opacity: 0.55; cursor: not-allowed; }
   mix-blend-mode: multiply;
 }
 
+/* 芯光层：与墨层同一位置，但用 screen 混合——只有"发光"能在纸上变亮，
+   所以光晕只会出现在墨体里，不会在浅色底图上糊出一圈霓虹。 */
+.ink-glow-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  mix-blend-mode: screen;
+}
+
 .map-grid {
   position: absolute;
   inset: 0;
@@ -533,7 +552,8 @@ button:disabled, input:disabled { opacity: 0.55; cursor: not-allowed; }
 .map-legend {
   position: absolute;
   left: 16px;
-  bottom: 16px;
+  /* 让开底图右下角之外的版权行 / 高德 logo，图例文字才读得清 */
+  bottom: 34px;
   z-index: 12;
   display: flex;
   flex-wrap: wrap;
@@ -551,7 +571,13 @@ button:disabled, input:disabled { opacity: 0.55; cursor: not-allowed; }
 .legend-dot { width: 9px; height: 9px; border-radius: 50%; }
 .legend-dot.safe { background: var(--ink); box-shadow: none; }
 .legend-dot.station { background: var(--danger); box-shadow: none; }
-.legend-line { width: 18px; height: 3px; border-radius: 3px; background: var(--live); }
+/* 墨色 = 整段行程的时间余量：渐变直接来自 data/config.js 的 ink.ramp（唯一色源）。 */
+.legend-line {
+  width: 26px;
+  height: 3px;
+  border-radius: 3px;
+  background: var(--ink-ramp-gradient, var(--live));
+}
 
 .map-status {
   position: absolute;
@@ -571,6 +597,79 @@ button:disabled, input:disabled { opacity: 0.55; cursor: not-allowed; }
 .map-status:empty { display: none; }
 .map-status[data-type="warning"] { border-color: rgba(180, 122, 10, 0.4); color: #8a5c05; }
 .map-status[data-type="error"] { border-color: rgba(179, 53, 47, 0.45); color: var(--danger); }
+.map-status[data-type="loading"] { color: var(--warm); }
+
+/* ---------- 墨线读数浮层 / 路线真实性徽标 --------------------------------
+   浮层与徽标都属于"地图上的说明文字"：暖宣纸底、矿物色字，不发光、不遮挡路线。 */
+.map-notices {
+  position: absolute;
+  right: 16px;
+  top: 16px;
+  z-index: 12;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  max-width: min(420px, 62%);
+}
+.map-notices .map-status { position: static; right: auto; top: auto; max-width: 100%; }
+
+.route-authenticity {
+  max-width: 100%;
+  padding: 4px 9px;
+  border: 1px solid rgba(124, 112, 92, 0.42);
+  background: rgba(245, 241, 233, 0.9);
+  color: var(--warm);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.route-authenticity[data-kind="pending"] { color: var(--gold); border-color: rgba(124, 112, 92, 0.5); }
+.route-authenticity[data-kind="failed"] { color: var(--danger); border-color: rgba(142, 81, 70, 0.45); }
+.route-authenticity[hidden] { display: none; }
+
+.route-tip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 13;
+  min-width: 170px;
+  max-width: min(268px, calc(100% - 20px));
+  padding: 9px 11px 10px;
+  border: 1px solid var(--line);
+  background: rgba(245, 241, 233, 0.95);
+  color: var(--ink);
+  font-size: 11.5px;
+  line-height: 1.5;
+  opacity: 0;
+  transform: translateY(3px);
+  transition: opacity 140ms ease, transform 140ms ease;
+  pointer-events: none;
+}
+.route-tip.is-visible { opacity: 1; transform: translateY(0); }
+.route-tip-title {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  color: var(--ink-faint);
+}
+.route-tip-rows {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 12px;
+  margin: 6px 0 0;
+}
+.route-tip-rows dt { color: var(--ink-soft); }
+.route-tip-rows dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.route-tip-rows dd[data-tone="critical"] { color: var(--gold); }
+.route-tip-rows dd[data-tone="danger"],
+.route-tip-rows dd[data-tone="storm"] { color: var(--danger); }
+.route-tip-note { margin: 7px 0 0; color: var(--ink-faint); line-height: 1.45; }
+.route-tip-note[hidden] { display: none; }
+
+/* 键盘可达：地图区域可聚焦，聚焦时才给一条克制的内描边。 */
+.map-shell:focus-visible { outline: 2px solid rgba(32, 35, 31, 0.34); outline-offset: -2px; }
+@media (prefers-reduced-motion: reduce) { .route-tip { transition: none; } }
 
 .showcase-overlay {
   position: absolute;
@@ -911,7 +1010,7 @@ button:disabled, input:disabled { opacity: 0.55; cursor: not-allowed; }
   .search-locate { grid-column: 1 / -1; justify-content: center; }
   .stage { padding: 14px 18px; gap: 18px; }
   .map-shell { min-height: 340px; height: min(58vh, 620px); }
-  .map-status { max-width: calc(100% - 32px); }
+  .map-notices { max-width: calc(100% - 32px); }
   .control-panel { grid-template-columns: 1fr; padding: 15px 0 18px; border-left: 0; border-top: 1px solid var(--line); }
   .panel-heading { grid-column: auto; }
   .results-section { grid-column: auto; }

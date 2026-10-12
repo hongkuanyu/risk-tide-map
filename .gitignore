@@ -3,3 +3,4 @@ MOBILE_URL.txt
 node_modules/ 
 .edge-*/ 
 ui-reference-board.html
+.shots/

@@ -150,7 +150,10 @@
       for (let i = 0; i < variants.length; i += 1) {
         const option = document.createElement('option');
         option.value = variants[i].id;
-        option.textContent = variants[i].label + ' · ' + variants[i].durationMinutes + '分钟';
+        const minutes = Number(variants[i].durationMinutes);
+        /* 规划失败 / 待重规划时没有可信时长：显示"待核对"而不是 null分钟 */
+        option.textContent = variants[i].label + ' · '
+          + (Number.isFinite(minutes) && minutes > 0 ? minutes + '分钟' : '待核对');
         this.elements.routeVariant.appendChild(option);
       }
       if (this.state.variantId) this.elements.routeVariant.value = this.state.variantId;
@@ -200,7 +203,11 @@
         }
       }
       const active = this.getActiveRoute(this.state);
-      if (active && Number.isFinite(Number(active.durationMinutes))) {
+      if (route.failed || (active && active.failed)) {
+        /* 规划失败：不保留上一轮的行程时间，否则新起终点会配上旧路线的读数。 */
+        this.state.routeMinutes = null;
+        this.elements.routeMinutes.value = '';
+      } else if (active && Number.isFinite(Number(active.durationMinutes))) {
         this.state.routeMinutes = Number(active.durationMinutes);
         this.elements.routeMinutes.value = String(active.durationMinutes);
       }
@@ -237,6 +244,41 @@
       }
     }
 
+    /* 墨线上的关键读数：悬停 / 点击 / 键盘浮层共用一份，避免各处重复拼装。 */
+    getRouteSummary() {
+      const result = riskModel.calculate({
+        trainTime: this.state.trainTime,
+        departureTime: this.state.departureTime,
+        routeMinutes: this.state.routeMinutes,
+        stationMinutes: this.state.stationMinutes,
+        safeBufferMinutes: config.risk.safeBufferMinutes
+      });
+      const route = this.getActiveRoute(this.state);
+      const minutes = Number(this.state.routeMinutes);
+      const label = route && route.label ? String(route.label) : '';
+      return {
+        mode: this.state.mode,
+        modeLabel: label ? label.split(' · ')[0] : '未选择出行方式',
+        routeLabel: label,
+        routeMinutes: Number.isFinite(minutes) && minutes > 0 ? minutes : null,
+        departureTime: this.state.departureTime,
+        trainTime: this.state.trainTime,
+        stationMinutes: Number(this.state.stationMinutes) || 0,
+        safeBufferMinutes: config.risk.safeBufferMinutes,
+        availableMinutes: result.availableMinutes,
+        bufferMinutes: result.valid ? result.bufferMinutes : null,
+        risk: result.valid ? result.risk : null,
+        level: result.level,
+        riskLabel: result.label,
+        latestDepartureTime: result.valid ? result.latestDepartureTime : '--:--',
+        valid: !!result.valid,
+        verified: !!(route && route.verified),
+        failed: !!(route && route.failed),
+        failReason: (route && route.reason) || '',
+        source: route ? route.source : ''
+      };
+    }
+
     updateMetrics(metrics) {
       if (metrics && metrics.text) {
         this.elements.metrics.textContent = metrics.text;
@@ -264,6 +306,10 @@
       if (!this.state.mode) {
         this.elements.routeWarning.textContent = '请选择网约车或公交。路线数据未接入前，风险不会被伪装成实时结论。';
         this.elements.routeWarning.dataset.type = 'warning';
+      } else if (route && route.failed) {
+        this.elements.routeWarning.textContent = route.label + '路线规划失败：' + (route.reason || '未知原因')
+          + '。未展示旧路线，也未沿用上一轮行程时间。';
+        this.elements.routeWarning.dataset.type = 'error';
       } else if (!hasRoute) {
         this.elements.routeWarning.textContent = route.label + '路线数据尚未录入；预计时间可手动填写，但不会生成真实路线几何。';
         this.elements.routeWarning.dataset.type = 'warning';
