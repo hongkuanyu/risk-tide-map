@@ -246,42 +246,52 @@
              ⑤ 流动高光  沿光脉推进的冷白短光段
            视觉优先级：浓墨主体 ＞ 连续光脉 ＞ 短时高光 ＞ 边缘墨雾。
            颜色：墨体不随风险变色（始终深墨黑）；风险只体现在光脉/高光的颜色与流速。 */
-        halo: { width: 13, alpha: 0.045, color: '#1B3540', phase: 0.5, undulate: 0.22 },
-        /* 外→内：暗青过渡（薄）→ 浓墨主体（厚实、近黑，占绝大宽度）→ 墨脊 */
+        halo: { width: 13.5, alpha: 0.042, color: '#1B3540', phase: 0.5, undulate: 0.22 },
+        /* 外→内：暗青过渡（薄）→ 浓墨主体（厚实、近黑，占绝大宽度）→ 墨脊
+           2026-10-13：整体再加厚压实，内部灰空被填实（更沉、更像真实浓墨） */
         passes: [
-          { width: 17.5, alpha: 0.28, color: '#12252D', sharp: 0.15, phase: 0.0, undulate: 0.32 },
-          { width: 16.0, alpha: 0.52, color: '#0C1A22', sharp: 0.30, phase: 0.6, undulate: 0.30 },
-          { width: 14.0, alpha: 0.68, color: '#071216', sharp: 0.50, phase: 1.2, undulate: 0.26 },
-          { width: 12.0, alpha: 0.82, color: '#03080C', sharp: 0.70, phase: 1.8, undulate: 0.22 }
+          { width: 18.5, alpha: 0.34, color: '#12252D', sharp: 0.15, phase: 0.0, undulate: 0.30 },
+          { width: 17.5, alpha: 0.58, color: '#0C1A22', sharp: 0.30, phase: 0.6, undulate: 0.28 },
+          { width: 16.0, alpha: 0.74, color: '#071216', sharp: 0.50, phase: 1.2, undulate: 0.24 },
+          { width: 14.5, alpha: 0.88, color: '#03080C', sharp: 0.70, phase: 1.8, undulate: 0.20 }
         ],
-        bone: { width: 8.0, alpha: 0.90, color: '#02060A', phase: 0.3, undulate: 0.16 },  // 实心墨脊（近黑主体）
-        head: { radius: 4.4, alpha: 0.95 },                                              // 墨头
-        /* 飞白：只留少量紧贴主线的短毛边（不再是向外伸的长划痕） */
-        bristle: { strands: 4, width: 1.6, inner: 0.95, outer: 1.18, alpha: 0.22,
-          color: '#08131A', scatter: 0.55, tailKeep: 0.45, phase: 0.2, undulate: 0.20 },
-        /* 中央流光：单束连续光脉 + 少量沿线条推进的冷白高光 */
+        bone: { width: 10.0, alpha: 0.92, color: '#02060A', phase: 0.3, undulate: 0.15 },  // 实心墨脊（近黑主体）
+        head: { radius: 4.6, alpha: 0.95 },                                               // 墨头
+        /* 飞白：只留 3 根紧贴主线的短毛（更少、更短、更贴边，不飘离主体） */
+        bristle: { strands: 3, width: 1.5, inner: 0.90, outer: 1.06, alpha: 0.18,
+          color: '#08131A', scatter: 0.50, tailKeep: 0.50, phase: 0.2, undulate: 0.18,
+          drift: 0.05 },                                                                  // 毛边图案也朝前缓慢偏移
+        /* 墨体内部的湿墨层次：极缓的浓淡呼吸（只改浓度、不改轮廓） */
+        wet: { alphaBreath: 0.035, period: 21, phases: [0.0, 1.7, 3.4, 5.1], alongLine: 0.06 },
+        /* 中央流光：一条连续主光脉 + 几段带拖尾的推进高光 */
         core: {
           enabled: true,
-          veinRatio: 0.13,                        // 光脉宽 = 墨体宽 × 0.15（≈6:1）
-          glowRatio: { min: 0.30, max: 0.45 },    // 外层柔光 = 墨体宽 × 0.30~0.45
-          veinAlpha: 0.72,
-          glowAlpha: 0.16,
+          veinRatio: 0.12,                        // 主光脉宽 = 墨体宽 × 0.12（≈8:1，细而连续）
+          veinAlpha: 0.48,                        // 主脉不再"整段均匀发亮"，靠流段提神
+          veinDrift: 0.22,                        // 主脉内部明暗沿线条缓慢游走
+          glowRatio: { min: 0.28, max: 0.42 },    // 外层柔光 = 墨体宽 × 0.28~0.42
+          glowAlpha: 0.14,
           hold: 0.10,                             // 两端淡出比例
-          drift: 0.35,                            // 光脉内部明暗游走（慢）
-          highlight: { width: 0.5, alpha: 0.90, count: 2, speed: 0.14, length: 0.055,
-            speedRisk: 1.6 }                      // 风险越高，光段推进越快
+          /* 墨体与光脉之间的深青过渡层（画在墨层上，让光像从墨里透出） */
+          transition: { widthRatio: 0.26, alpha: 0.60, color: '#123240' },
+          /* 推进的高亮流段：前端尖而亮、尾部柔而长（明显拖尾） */
+          highlight: { count: 3, speed: 0.13, speedRisk: 1.9, width: 0.95, alpha: 0.98,
+            headLength: 0.014, tailLength: 0.115, spread: 0.34 },
+          /* 弯道：流光轻微压缩并增亮，出弯重新舒展 */
+          corner: { compress: 0.40, brighten: 0.55 },
+          drift: 0.35
         },
         /* 危险态：边缘可出现极少量赤墨渗出 */
         bleed: { from: 72, max: 0.12, color: '#E66A5A' },
         /* 风险调制：仅轻微加宽/加浓，墨体不能因此变成"压力管" */
         risk: {
-          width: { min: 0.94, max: 1.14 },
-          alpha: { min: 0.92, max: 1.04 }
+          width: { min: 0.94, max: 1.12 },
+          alpha: { min: 0.94, max: 1.04 }
         },
         /* 风险变化沿墨线传播（墨头先响应、墨尾滞后），单位秒 */
         propagate: { rise: 1.6, fall: 3.4 },
         /* 极微弱呼吸（整条线不许膨胀收缩） */
-        flow: { amplitude: 0.04, period: 16 }
+        flow: { amplitude: 0.035, period: 18 }
       },
       /* 全国墨潮：潮岸缓慢扩散、等值线、城市墨源半径 */
       tide: {

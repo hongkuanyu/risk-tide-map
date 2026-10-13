@@ -41,7 +41,7 @@ async function main() {
   if (process.env.RISK_HIGH === '1' || process.env.RISK_HIGH === 'mid') {
     await page.evaluate(`(() => {
       const slider = document.getElementById('departure-slider');
-      slider.value = ${process.env.RISK_HIGH === 'mid' ? '102' : '60'};
+      slider.value = ${process.env.RISK_HIGH === 'mid' ? '91' : '60'};
       slider.dispatchEvent(new Event('input', { bubbles: true }));
       return 'ok';
     })()`);

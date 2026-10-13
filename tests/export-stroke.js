@@ -18,7 +18,7 @@ const H = Number(process.env.OUT_H || 420);
 /* 三种风险状态：直接用 slider 把时间条件压到对应风险 */
 const STATES = [
   { name: 'safe', slider: '120', label: '安全 #68DFED' },
-  { name: 'critical', slider: '102', label: '临界 #EABB6C' },
+  { name: 'critical', slider: '91', label: '临界 #EABB6C（风险≈55）' },
   { name: 'danger', slider: '60', label: '危险 #E66A5A' }
 ];
 
@@ -74,6 +74,13 @@ async function main() {
     if (r.bone) r.bone.width *= k;
     if (r.bristle) r.bristle.width *= k;
     if (r.core && r.core.highlight) r.core.highlight.width *= k;
+    /* 素材是单张 PNG：canvas 的 screen 合成会按 alpha 衰减，
+       所以这里把光脉/高光补满，让素材与页面（CSS screen 层）观感一致。 */
+    if (r.core) {
+      r.core.veinAlpha = 1;
+      r.core.glowAlpha = 0.22;
+      if (r.core.highlight) r.core.highlight.alpha = 1;
+    }
     if (r.head) r.head.radius *= k;
     return 'ok';
   })()`);
