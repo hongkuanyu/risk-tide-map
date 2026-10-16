@@ -1,4 +1,4 @@
-/* global window, document */
+﻿/* global window, document */
 (function (global) {
   'use strict';
 
@@ -64,7 +64,7 @@
   }
   function oklabLift(rgb, amount) { return oklabToRgb(oklabLiftLab(rgbToOklab(rgb), amount)); }
 
-  /* 沿色阶平滑插值（OKLab + smoothstep，coreRamp / highlightRamp 共用） */
+  /* 沿色阶平滑插值（OKLab + smoothstep，coreRamp 唯一色源） */
   function rampRgb(ramp, risk) {
     if (!ramp || !ramp.length) return [0, 0, 0];
     const t = clamp((Number(risk) || 0) / 100, 0, 1);
@@ -152,6 +152,7 @@
       this.hoverTarget = 0;
       this.pulses = [];
       this.pulseHeads = [];
+      this.wavePhases = [0.0, 0.41, 0.73];
       this.fadeIn = 1;
       this.frameTimer = 0;
       this._colourLut = null;
@@ -230,6 +231,7 @@
       this.hoverTarget = 0;
       this.pulses = [];
       this.pulseHeads = [];
+      this.wavePhases = [0.0, 0.41, 0.73];
       this.displayRisk = this.riskTarget;   // 新路线直接落到当前目标风险
       this._colourLut = null;
       this.fadeIn = this.reducedMotion ? 1 : 0;
@@ -413,20 +415,61 @@
 
     /* 潮汐波峰能量：沿线位置 t（0=终点，1=起点）叠加若干推进波峰的亮度/宽度包络。
        每个波峰前端集中、后端缓慢衰减，单向推进（终点 → 起点）。 */
+    flowPeriod(risk01) {
+      const wave = (config.ink && config.ink.route && config.ink.route.wave) || {};
+      const period = wave.period || { safe: 24, critical: 15, danger: 8 };
+      const t = clamp(risk01 === undefined ? 0 : risk01, 0, 1);
+      if (t <= 0.70) {
+        return (period.safe === undefined ? 24 : period.safe)
+          + ((period.critical === undefined ? 15 : period.critical) - (period.safe === undefined ? 24 : period.safe))
+            * smoothstep(0, 0.70, t);
+      }
+      return (period.critical === undefined ? 15 : period.critical)
+        + ((period.danger === undefined ? 8 : period.danger) - (period.critical === undefined ? 15 : period.critical))
+          * smoothstep(0.70, 1.0, t);
+    }
+
+    waveSpeed() {
+      return 1 / Math.max(1, this.flowPeriod(this.displayRisk / 100));
+    }
+
+    /* 每个波峰有自己的低频节奏 + 次级慢速调制，错相追赶、聚合、舒展；速度恒正 */
+    peakSpeed(k) {
+      const wave = (config.ink && config.ink.route && config.ink.route.wave) || {};
+      const rhythm = wave.rhythm || { amp: 0.10, freq: 0.07 };
+      const drift = wave.drift || { amp: 0.035, freq: 0.023 };
+      const base = this.waveSpeed();
+      const t = this.reducedMotion ? 0 : this.elapsed;
+      const low = 1 + (rhythm.amp === undefined ? 0.10 : rhythm.amp)
+        * Math.sin(t * (Math.PI * 2) * (rhythm.freq === undefined ? 0.07 : rhythm.freq) + k * 2.4);
+      const slow = 1 + (drift.amp === undefined ? 0.035 : drift.amp)
+        * Math.sin(t * (Math.PI * 2) * (drift.freq === undefined ? 0.023 : drift.freq) + k * 1.7);
+      return base * low * slow;
+    }
+
+    advanceWaves(dt) {
+      if (this.reducedMotion || dt <= 0) return;
+      const wave = (config.ink && config.ink.route && config.ink.route.wave) || {};
+      const count = clamp(Math.round(wave.count === undefined ? 3 : wave.count), 0, 8);
+      if (!this.wavePhases || this.wavePhases.length < count) {
+        this.wavePhases = [0.0, 0.41, 0.73, 0.17, 0.58, 0.88, 0.31, 0.74].slice(0, count);
+      }
+      for (let k = 0; k < count; k += 1) {
+        this.wavePhases[k] = (this.wavePhases[k] + this.peakSpeed(k) * dt) % 1;
+        if (this.wavePhases[k] < 0) this.wavePhases[k] += 1;
+      }
+    }
+
     waveEnergy(t) {
       const wave = (config.ink && config.ink.route && config.ink.route.wave) || {};
       const count = clamp(Math.round(wave.count === undefined ? 3 : wave.count), 0, 8);
       if (!count || this.reducedMotion) return 0;
-      const risk01 = clamp(this.displayRisk / 100, 0, 1);
-      const speed = (wave.baseSpeed === undefined ? 0.09 : wave.baseSpeed)
-        * (1 + (wave.speedRisk === undefined ? 2.6 : wave.speedRisk) * risk01);
-      const travel = this.elapsed * speed;
-      const headSharp = Math.max(0.008, wave.headSharp === undefined ? 0.045 : wave.headSharp);
-      const tailLong = Math.max(0.02, wave.tailLong === undefined ? 0.30 : wave.tailLong);
+      if (!this.wavePhases) this.wavePhases = [0.0, 0.41, 0.73];
+      const headSharp = Math.max(0.008, wave.headSharp === undefined ? 0.04 : wave.headSharp);
+      const tailLong = Math.max(0.02, wave.tailLong === undefined ? 0.32 : wave.tailLong);
       let e = 0;
       for (let k = 0; k < count; k += 1) {
-        const base = (k / count + k * 0.382) % 1;
-        const head = ((base + travel) % 1 + 1) % 1;
+        const head = this.wavePhases[k] || 0;
         let d = t - head;
         if (d > 0.5) d -= 1;
         if (d < -0.5) d += 1;
@@ -438,15 +481,18 @@
     }
 
     /* 同色相明暗（波峰亮度 + 缓慢呼吸），正数提亮、负数压暗 */
-    bodyLift(t) {
+    bodyLift(t, curve) {
       const route = (config.ink && config.ink.route) || {};
       const body = route.body || {};
       const wave = route.wave || {};
       const w = this.waveEnergy(t);
+      const c = curve === undefined ? 0 : curve;
+      const corner = wave.corner || { compress: 0.15, brighten: 0.30 };
+      const cornerBrighten = (corner.brighten === undefined ? 0.30 : corner.brighten) * c * w;
       const breathAmp = body.lightnessBreath === undefined ? 0.06 : body.lightnessBreath;
       const period = Math.max(4, body.breathPeriod === undefined ? 9 : body.breathPeriod);
       const breath = Math.sin(t * 6.283 - this.elapsed * (Math.PI * 2) / period) * breathAmp;
-      return clamp((wave.brightness === undefined ? 0.34 : wave.brightness) * w + breath, -0.6, 0.95);
+      return clamp((wave.brightness === undefined ? 0.30 : wave.brightness) * w + breath + cornerBrighten, -0.6, 0.95);
     }
 
     /* 每帧构建一次同色相明暗查找表：主体颜色全程统一，只有亮度随波峰/呼吸变化 */
@@ -461,9 +507,9 @@
       this._colourLut = lut;
     }
 
-    colourAt(t) {
+    colourAt(t, curve) {
       if (!this._colourLut) this.buildColourLut();
-      const lift = this.bodyLift(t);
+      const lift = this.bodyLift(t, curve);
       const idx = clamp(Math.round((lift + 0.6) / 1.55 * 64), 0, 64);
       return this._colourLut[idx];
     }
@@ -502,7 +548,7 @@
       let fallback = fixedColour || null;
       if (!fallback) {
         if (channel === 'highlight') {
-          fallback = rgbStr(rampRgb(config.ink && config.ink.highlightRamp, risk01 * 100));
+          fallback = rgbStr(oklabLift(rampRgb(config.ink && config.ink.coreRamp, risk01 * 100), 0.35));
         } else if (channel === 'vein') {
           const core = ((config.ink && config.ink.route) || {}).core || {};
           const lift = core.veinLighten === undefined ? 0.24 : core.veinLighten;
@@ -616,8 +662,8 @@
       const aMax = riskCfg.alpha && riskCfg.alpha.max !== undefined ? riskCfg.alpha.max : 1.0;
       const widthRisk = wMin + (wMax - wMin) * rn;
       const alphaRisk = aMin + (aMax - aMin) * rn;
-      const waveBoost = wave.widthBoost === undefined ? 0.20 : wave.widthBoost;
-      const alphaBoost = wave.alphaBoost === undefined ? 0.12 : wave.alphaBoost;
+      const waveBoost = wave.widthBoost === undefined ? 0.10 : wave.widthBoost;
+      const alphaBoost = wave.alphaBoost === undefined ? 0.08 : wave.alphaBoost;
 
       const endIndex = Math.min(total - 1, Math.max(1, Math.floor(limit)));
       const tEnd = limit - Math.floor(limit);
@@ -679,8 +725,11 @@
           + Math.sin(t * 7.3 + 1.8) * 0.026
           + Math.sin(t * 17.9 + 0.7) * 0.018
           + Math.sin(t * 41.3 + 2.4) * 0.010;
+        const c = this.curveAt(i);
         const w = this.waveEnergy(t);
-        const waveW = 1 + waveBoost * w;
+        const waveCorner = wave.corner || { compress: 0.15, brighten: 0.30 };
+        const waveCompress = (waveCorner.compress === undefined ? 0.15 : waveCorner.compress) * c;
+        const waveW = 1 + waveBoost * w * (1 - waveCompress);
         let half = spec.width * taper * pressure * edge * widthRisk * waveW * 0.5 * miter;
         if (turn > SHARP_TURN_RAD) {
           const minLen = Math.min(a.len, b.len);
@@ -691,7 +740,7 @@
         left[i] = { x: vis[i].x + nx * half, y: vis[i].y + ny * half };
         right[i] = { x: vis[i].x + nx * -half, y: vis[i].y + ny * -half };
         alpha[i] = clamp(spec.alpha * alphaRisk * (1 + alphaBoost * w) * this.fadeIn, 0, 1);
-        colour[i] = this.colourAt(t);
+        colour[i] = this.colourAt(t, c);
         if (i === 0) { startHalf = half; startAlpha = alpha[0]; startColour = colour[0]; }
       }
 
@@ -779,8 +828,8 @@
       const flCount = Math.max(0, Math.round(fl.count === undefined ? 3 : fl.count));
       const flWidth = Math.max(0.4, veinWidth * (fl.widthRatio === undefined ? 0.22 : fl.widthRatio));
       const flHold = fl.hold === undefined ? 0.16 : fl.hold;
-      const flSpeed = fl.speed === undefined ? 0.09 : fl.speed;
-      const flSpread = (fl.spreadRatio === undefined ? 0.30 : fl.spreadRatio) * veinWidth * 0.5;
+      const flSpeed = this.waveSpeed() * (fl.speed === undefined ? 1.25 : fl.speed);
+      const flSpread = (fl.spreadRatio === undefined ? 0.28 : fl.spreadRatio) * veinWidth * 0.5;
       const flTravel = this.reducedMotion ? 0 : this.elapsed * flSpeed;
       for (let k = 0; k < flCount; k += 1) {
         const lane = (k - (flCount - 1) / 2) * (k % 2 === 0 ? 1 : -1) * 0.6;
@@ -797,7 +846,7 @@
           return {
             offset: lane * e,
             width: flWidth * e * (0.8 + 0.4 * win),
-            alpha: (fl.alpha === undefined ? 0.32 : fl.alpha) * win * e * (0.9 + 0.1 * scale.breathe)
+            alpha: (fl.alpha === undefined ? 0.28 : fl.alpha) * win * e * (0.9 + 0.1 * scale.breathe)
           };
         }, 'highlight', this.glowCtx, cfg.phase, cfg.undulate);
       }
@@ -806,11 +855,10 @@
       const hl = cfg.highlight || {};
       const count = Math.max(0, Math.round(hl.count === undefined ? 3 : hl.count));
       if (!count) return;
-      const headLen = Math.max(0.004, hl.headLength === undefined ? 0.012 : hl.headLength);
-      const tailLen = Math.max(headLen, (hl.tailLength === undefined ? 0.10 : hl.tailLength)
-        * (1 + (hl.tailRisk === undefined ? 0.5 : hl.tailRisk) * risk01));
-      const speed = (hl.speed === undefined ? 0.12 : hl.speed)
-        * (1 + (hl.speedRisk === undefined ? 2.0 : hl.speedRisk) * risk01);
+      const headLen = Math.max(0.004, hl.headLength === undefined ? 0.016 : hl.headLength);
+      const tailLen = Math.max(headLen, (hl.tailLength === undefined ? 0.16 : hl.tailLength)
+        * (1 + (hl.tailRisk === undefined ? 0.4 : hl.tailRisk) * risk01));
+      const speed = this.waveSpeed() * (hl.speed === undefined ? 1.5 : hl.speed);
       const travel = this.reducedMotion ? 0 : this.elapsed * speed;
       if (!this.pulseHeads) this.pulseHeads = [];
       for (let k = 0; k < count; k += 1) {
@@ -847,9 +895,9 @@
           const c = curveOf(i);
           return {
             offset: 0,
-            width: (hl.width === undefined ? 0.9 : hl.width) * (0.55 + 2.4 * tailFade)
+            width: (hl.width === undefined ? 0.85 : hl.width) * (0.55 + 2.4 * tailFade)
               * (1 - compress * 0.2 * c) + veinWidth * 0.18,
-            alpha: clamp((hl.alpha === undefined ? 0.98 : hl.alpha) * win * e
+            alpha: clamp((hl.alpha === undefined ? 0.88 : hl.alpha) * win * e
               * (1 + brighten * 0.30 * c), 0, 1)
           };
         }, 'highlight', this.glowCtx, cfg.phase, cfg.undulate);
@@ -967,6 +1015,7 @@
       this.hover += (this.hoverTarget - this.hover) * (1 - Math.exp(-dt / 0.35));
       if (Math.abs(this.hoverTarget - this.hover) < HOVER_EPS) this.hover = this.hoverTarget;
       this.advanceRisk(dt);
+      this.advanceWaves(dt);
       if (!this.reducedMotion && this.kind === 'road' && this.progress < 1) {
         const grow = (config.ink && config.ink.route && config.ink.route.growSeconds) || 2.6;
         this.writeElapsed += writeDt;

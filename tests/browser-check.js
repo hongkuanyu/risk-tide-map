@@ -1268,7 +1268,7 @@ async function scenarioFlow(page) {
   /* headless 下新建的标签页可能是后台页（document.hidden = true），
      不置前/不强制可见的话动画根本不会跑 —— 这里两件都做，保证测的是渲染本身。 */
   await page.browser.send('Page.bringToFront', {}, page.sessionId);
-  /* 确定性方向断言：把流动高光临时收成 1 段、速度调成 0.1/s，
+  /* 确定性方向断言：把流动高光临时收成 1 段、速度调成潮汐速度的 1.8 倍，
      这样它在采样区间内不会回绕，位置 t 必须单调递增（终点 → 起点）。 */
   await page.evaluate(`(() => {
     const core = window.RiskTideConfig.ink.route.core;
@@ -1276,8 +1276,8 @@ async function scenarioFlow(page) {
     core.filament.count = 0;
     const cfg = core.highlight;
     cfg.count = 1;
-    cfg.speed = 0.1;
-    cfg.speedRisk = 0;
+    cfg.speed = 1.8;
+
     return 'ok';
   })()`);
   await page.evaluate(`(() => {
