@@ -1,4 +1,4 @@
-:root {
+﻿:root {
   --paper: #f0ece3;
   --paper-2: #e7e2d8;
   --paper-panel: #f3efe7;
@@ -518,10 +518,8 @@ button:disabled, input:disabled { opacity: 0.55; cursor: not-allowed; }
   width: 100%;
   height: 100%;
   pointer-events: none;
-  /* Normal blending, not multiply: the strands are already semi-transparent
-     (alpha .05-.45) and must read as luminous silk over the map rather than
-     stacking with the multiplied ink tide into a dark smear. */
-  mix-blend-mode: multiply;
+  /* 纯色流光主体层：normal 混合——主线是风险主题色，不压暗底图、不套黑边，
+     需要像"光线"一样读出来，而不是 multiply 出深色墨迹。 */
 }
 
 /* 芯光层：与墨层同一位置，但用 screen 混合——只有"发光"能在纸上变亮，

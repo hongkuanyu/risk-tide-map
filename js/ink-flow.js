@@ -9,74 +9,62 @@
     return t * t * (3 - 2 * t);
   }
 
-  /* 唯一色源：淡墨 -> 灰墨 -> 浓墨 -> 焦墨 -> 焦墨+朱砂（OKLab 连续插值）。 */
-  function inkColour(risk, shade, colorHex) {
-    /* colorHex：直接指定墨色（浓墨材质用），否则走风险色阶 */
-    if (colorHex) {
-      const fixed = hexToRgb(colorHex);
-      return { r: fixed[0], g: fixed[1], b: fixed[2], str: rgbStr(fixed) };
-    }
-    const rgb = [0, 0, 0];
-    const renderer = global.RiskTideNationInk;
-    if (renderer && typeof renderer.riskColour === 'function') {
-      renderer.riskColour(risk, rgb);
-    } else {
-      rgb[0] = 43; rgb[1] = 43; rgb[2] = 40;
-    }
-    /* shade < 1 = 这一层更沉（墨体压深，芯光才亮得出来）；色相仍随风险走 */
-    const k = shade === undefined ? 1 : clamp(shade, 0, 1);
-    if (k >= 0.999) return { r: rgb[0], g: rgb[1], b: rgb[2], str: 'rgb(' + rgb.join(',') + ')' };
-    const out = [Math.round(rgb[0] * k), Math.round(rgb[1] * k), Math.round(rgb[2] * k)];
-    return { r: out[0], g: out[1], b: out[2], str: 'rgb(' + out.join(',') + ')' };
+  /* ---- OKLab 感知色彩空间：风险色连续插值 + 同色相明暗 -------------------
+     RGB 直接线性插值会经过灰绿脏色，所以所有风险色阶都在 OKLab 中插值。 */
+  function srgbToLinear(c) {
+    c = clamp(c / 255, 0, 1);
+    return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
   }
-
-  /* 芯光通道：同一色阶的极简线性插值（色值本身来自 config.ink.coreRamp）。
-     墨体负责"是什么"，芯光负责"有多紧"——低风险冷银、临近迟到转暖白、超出转焦红。 */
-  function coreColour(risk) {
-    const ramp = (config.ink && config.ink.coreRamp) || null;
-    if (!ramp || !ramp.length) {
-      const base = inkColour(risk);
-      return { r: base.r, g: base.g, b: base.b, str: base.str };
-    }
-    const t = clamp((Number(risk) || 0) / 100, 0, 1);
-    let a = ramp[0];
-    let b = ramp[ramp.length - 1];
-    for (let i = 1; i < ramp.length; i += 1) {
-      if (t <= ramp[i].at) { a = ramp[i - 1]; b = ramp[i]; break; }
-    }
-    const span = (b.at - a.at) || 1;
-    const k = smoothstep(0, 1, clamp((t - a.at) / span, 0, 1));
-    const rgb = [
-      Math.round(a.rgb[0] + (b.rgb[0] - a.rgb[0]) * k),
-      Math.round(a.rgb[1] + (b.rgb[1] - a.rgb[1]) * k),
-      Math.round(a.rgb[2] + (b.rgb[2] - a.rgb[2]) * k)
-    ];
-    return { r: rgb[0], g: rgb[1], b: rgb[2], str: 'rgb(' + rgb.join(',') + ')' };
+  function linearToSrgb(c) {
+    const out = c <= 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
+    return Math.round(clamp(out * 255, 0, 255));
   }
-
-  /* hover 时只轻微增强墨脊，不做发光 / 放大 */
-  function hoverBoostValue(hover) { return 1 + (Number(hover) || 0) * 0.18; }
-
-
-  /* 颜色小工具：　hex → rgb、两层混合、色阶插值（供浓墨材质与流光使用） */
-  function hexToRgb(hex) {
-    const h = String(hex || '').replace('#', '');
-    if (h.length !== 6) return [0, 0, 0];
-    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
-  }
-
-  function mixRgb(a, b, t) {
-    const k = clamp(t, 0, 1);
+  function rgbToOklab(rgb) {
+    const r = srgbToLinear(rgb[0]);
+    const g = srgbToLinear(rgb[1]);
+    const b = srgbToLinear(rgb[2]);
+    const l = 0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b;
+    const m = 0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b;
+    const s = 0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b;
+    const l_ = Math.cbrt(l);
+    const m_ = Math.cbrt(m);
+    const s_ = Math.cbrt(s);
     return [
-      Math.round(a[0] + (b[0] - a[0]) * k),
-      Math.round(a[1] + (b[1] - a[1]) * k),
-      Math.round(a[2] + (b[2] - a[2]) * k)
+      0.2104542553 * l_ + 0.7936177850 * m_ - 0.0040720468 * s_,
+      1.9779984951 * l_ - 2.4285922050 * m_ + 0.4505937099 * s_,
+      0.0259040371 * l_ + 0.7827717662 * m_ - 0.8086757660 * s_
     ];
   }
-
+  function oklabToRgb(lab) {
+    const l_ = lab[0] + 0.3963377774 * lab[1] + 0.2158037573 * lab[2];
+    const m_ = lab[0] - 0.1055613458 * lab[1] - 0.0638541728 * lab[2];
+    const s_ = lab[0] - 0.0894841775 * lab[1] - 1.2914855480 * lab[2];
+    const l = l_ * l_ * l_;
+    const m = m_ * m_ * m_;
+    const s = s_ * s_ * s_;
+    const r = 4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s;
+    const g = -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s;
+    const b = -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s;
+    return [linearToSrgb(r), linearToSrgb(g), linearToSrgb(b)];
+  }
   function rgbStr(rgb) { return 'rgb(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ')'; }
+  /* 同色相提亮 / 压暗：amount ∈ [-1,1]。正数向白提亮、负数同色相压暗。 */
+  function oklabLiftLab(lab, amount) {
+    const k = clamp(amount, -1, 1);
+    let l2;
+    let cscale;
+    if (k >= 0) {
+      l2 = lab[0] + (1 - lab[0]) * k;
+      cscale = 1 - 0.25 * k;
+    } else {
+      l2 = lab[0] * (1 + k);
+      cscale = 1 + 0.12 * k;
+    }
+    return [clamp(l2, 0, 1), lab[1] * cscale, lab[2] * cscale];
+  }
+  function oklabLift(rgb, amount) { return oklabToRgb(oklabLiftLab(rgbToOklab(rgb), amount)); }
 
-  /* 沿色阶平滑插值（coreRamp / highlightRamp 共用） */
+  /* 沿色阶平滑插值（OKLab + smoothstep，coreRamp / highlightRamp 共用） */
   function rampRgb(ramp, risk) {
     if (!ramp || !ramp.length) return [0, 0, 0];
     const t = clamp((Number(risk) || 0) / 100, 0, 1);
@@ -86,35 +74,30 @@
       if (t <= ramp[i].at) { a = ramp[i - 1]; b = ramp[i]; break; }
     }
     const span = (b.at - a.at) || 1;
-    return mixRgb(a.rgb, b.rgb, smoothstep(0, 1, clamp((t - a.at) / span, 0, 1)));
+    const k = smoothstep(0, 1, clamp((t - a.at) / span, 0, 1));
+    const A = rgbToOklab(a.rgb);
+    const B = rgbToOklab(b.rgb);
+    return oklabToRgb([A[0] + (B[0] - A[0]) * k, A[1] + (B[1] - A[1]) * k, A[2] + (B[2] - A[2]) * k]);
   }
 
-  /* 点到线段的距离（屏幕坐标），供 hover / 点击命中检测。 */
-  function pointSegmentDistance(px, py, a, b) {
-    const dx = b.x - a.x, dy = b.y - a.y;
-    const lenSq = dx * dx + dy * dy;
-    let t = lenSq ? ((px - a.x) * dx + (py - a.y) * dy) / lenSq : 0;
-    t = Math.max(0, Math.min(1, t));
-    const cx = a.x + dx * t, cy = a.y + dy * t;
-    return Math.hypot(px - cx, py - cy);
+  /* 芯光通道色（保留旧名）：当前显示风险下的统一主题色 */
+  function coreColour(risk) {
+    return rgbStr(rampRgb((config.ink && config.ink.coreRamp) || null, risk));
   }
 
   /* ---- 几何常量 -------------------------------------------------------- */
-  const MIN_SEGMENT_PX = 0.6;      // 重复坐标 / 极短路径段的合并阈值
-  const MIN_STEP_PX = 2.2;         // 采样下限：急弯处也能得到稳定的切线
-  const MAX_STEP_PX = 5;           // 采样上限：保留水墨笔触的连贯
-  const MAX_POINTS = 560;          // 单条墨线采样点上限（拖动时每帧重投影的开销上限）
-  const MAX_STEP_RELAXED = 12;     // 触到上限时允许放粗的步长上限（保证不出现明显削角）
-  const HIT_RADIUS_PX = 18;        // 悬停 / 点击命中半径
-  const IDLE_REFRESH_MS = 110;     // 静止后的低频重绘：墨要活着，但不做满帧动画
-  const MITER_MAX = 1.45;          // 接缝斜接上限：粗笔触在急转弯处不许长出尖喙
-  const SHARP_TURN_RAD = Math.PI * 2 / 3;  // 超过 120° 视为折返，额外收窄
-  const PHYSICS_DT_CAP = 0.5;      // 风险传播 / 悬停插值的单帧上限（秒）
-  const WRITE_DT_CAP = 1.0;        // 写线时钟的单帧上限（秒）
-  const HOVER_EPS = 0.004;         // 悬停强度收敛阈值：收敛后停止逐帧重绘
+  const MIN_SEGMENT_PX = 0.6;
+  const MIN_STEP_PX = 2.2;
+  const MAX_STEP_PX = 5;
+  const MAX_POINTS = 560;
+  const MAX_STEP_RELAXED = 12;
+  const HIT_RADIUS_PX = 18;
+  const MITER_MAX = 1.45;
+  const SHARP_TURN_RAD = Math.PI * 2 / 3;
+  const PHYSICS_DT_CAP = 0.5;
+  const WRITE_DT_CAP = 1.0;
+  const HOVER_EPS = 0.004;
 
-  /* 轻度平滑（只动内部点）：压掉折返 / 急转弯造成的切线抖动。
-     权重随采样步长自适应——步长越粗，权重越小，不会把真实转角磨圆。 */
   function smoothPolyline(points, weight) {
     if (points.length < 3) return;
     const w = clamp(weight === undefined ? 0.25 : weight, 0, 0.35);
@@ -136,14 +119,11 @@
     }
     return { kind: 'preview', reason: '' };
   }
-
   class InkFlow {
     constructor(canvas, mapController) {
       this.canvas = canvas;
       this.ctx = canvas && canvas.getContext
         ? canvas.getContext('2d', { alpha: true, desynchronized: true }) : null;
-      /* 芯光单独画在一层 screen 混合的画布上：墨层是 multiply，只能把底图压暗，
-         想"发光"必须另起一层，否则亮芯只会变成一道浅灰。 */
       this.glowCanvas = document.getElementById('ink-glow-canvas');
       this.glowCtx = this.glowCanvas && this.glowCanvas.getContext
         ? this.glowCanvas.getContext('2d', { alpha: true, desynchronized: true }) : null;
@@ -155,7 +135,7 @@
       this.kind = 'empty';
       this.reason = '';
       this.points = [];
-      this.displayRisk = new Float32Array(0);
+      this.displayRisk = 0;          // 单值：整条主线每个时刻使用统一风险主题色
       this.riskTarget = 0;
       this.routeDirty = true;
       this.progress = 0;
@@ -170,7 +150,11 @@
       this.writeElapsed = 0;
       this.hover = 0;
       this.hoverTarget = 0;
+      this.pulses = [];
+      this.pulseHeads = [];
+      this.fadeIn = 1;
       this.frameTimer = 0;
+      this._colourLut = null;
       this.boundFrame = this.frame.bind(this);
       this.boundRequest = this.requestFrame.bind(this);
       this.resize();
@@ -183,7 +167,6 @@
       this.resizeObserver.observe(this.canvas.parentNode || this.canvas);
     }
 
-    /* 设备像素比上限：DPR 越高不代表线越细，只要画布足够清晰即可。 */
     targetDpr() {
       return Math.min(global.devicePixelRatio || 1, this.reducedMotion ? 1.5 : 2);
     }
@@ -207,7 +190,6 @@
       this.requestFrame();
     }
 
-    /* DPR 变化（跨屏拖动 / 浏览器缩放）不会触发 window resize，这里主动校验。 */
     maybeResizeForDpr() {
       if (!this.canvas) return false;
       if (Math.abs(this.targetDpr() - this.dpr) < 1e-3) return false;
@@ -221,7 +203,7 @@
         ? route.coordinates : null;
     }
 
-    /* 无真实道路几何时的示意几何：只连起终点，绝不用真实水墨笔触表现。 */
+    /* 无真实道路几何时的示意几何：只连起终点，绝不用真实流光笔触表现。 */
     getHintCoordinates() {
       const live = this.map && typeof this.map.getEndpoints === 'function'
         ? this.map.getEndpoints() : null;
@@ -233,7 +215,6 @@
       return [campus.coordinate, station.coordinate];
     }
 
-    /* status: { kind: 'road' | 'preview' | 'failed', reason } —— 由 app 层判定。 */
     setRoute(route, status) {
       const previous = this.route;
       const previousKind = this.kind;
@@ -245,9 +226,13 @@
       this.routeDirty = true;
       this.progress = (this.reducedMotion || this.kind !== 'road') ? 1 : 0;
       this.writeElapsed = 0;
-      /* 新路线不再沿用上一条线的悬停状态与墨头，避免新旧混淆 */
       this.hover = 0;
       this.hoverTarget = 0;
+      this.pulses = [];
+      this.pulseHeads = [];
+      this.displayRisk = this.riskTarget;   // 新路线直接落到当前目标风险
+      this._colourLut = null;
+      this.fadeIn = this.reducedMotion ? 1 : 0;
       if (changed) this.elapsed = 0;
       this.requestFrame();
       return this;
@@ -259,14 +244,12 @@
       return this;
     }
 
-    /* 指针贴近墨线时轻微增强，不做发光 / 放大 / 弹窗。 */
     setHover(strength) {
       this.hoverTarget = clamp(Number(strength) || 0, 0, 1);
       this.requestFrame();
       return this;
     }
 
-    /* 悬停 / 点击命中：返回最近的落点，供浮层定位。 */
     hitTest(x, y) {
       const points = this.points;
       if (points.length < 2) return null;
@@ -286,7 +269,6 @@
         if (distance < best) { best = distance; bestIndex = i; bestX = cx; bestY = cy; }
       }
       if (best > HIT_RADIUS_PX) return null;
-      /* 法线朝向指针所在的一侧，浮层据此把锚点推离墨线，不压住笔画 */
       const seg = points[bestIndex];
       const next = points[Math.min(points.length - 1, bestIndex + 1)];
       let dx = next.x - seg.x, dy = next.y - seg.y;
@@ -304,13 +286,11 @@
       };
     }
 
-    /* 兼容旧调用：返回 0..1 的悬停强度。 */
     hoverAt(x, y) {
       const hit = this.hitTest(x, y);
       return hit ? hit.strength : 0;
     }
 
-    /* 墨线中点（键盘交互 / 无指针时的浮层锚点）。 */
     midpointAt(fraction) {
       const points = this.points;
       if (points.length < 2) return null;
@@ -328,19 +308,14 @@
       const coordinates = this.kind === 'road' ? this.getRouteCoordinates() : this.getHintCoordinates();
       if (!coordinates || coordinates.length < 2 || !this.map
           || typeof this.map.getScreenPath !== 'function') {
-        this.displayRisk = new Float32Array(0);
         return;
       }
       const system = this.kind === 'road'
         ? (this.route && this.route.coordinateSystem) : 'WGS84';
       const projected = this.map.getScreenPath(coordinates, system)
         .filter(function (point) { return point && Number.isFinite(point.x) && Number.isFinite(point.y); });
-      if (projected.length < 2) {
-        this.displayRisk = new Float32Array(0);
-        return;
-      }
+      if (projected.length < 2) return;
 
-      /* 去重：重复坐标与极短路径段会污染切线，进而在笔触上产生尖刺。 */
       const dense = [projected[0]];
       let total = 0;
       for (let i = 1; i < projected.length; i += 1) {
@@ -351,17 +326,10 @@
         dense.push(end);
         total += distance;
       }
-      if (dense.length < 2 || total < MIN_SEGMENT_PX) {
-        this.displayRisk = new Float32Array(0);
-        return;
-      }
+      if (dense.length < 2 || total < MIN_SEGMENT_PX) return;
       this.totalLength = total;
 
-      /* 等距弧长重采样：步长随总长自适应，既补稀（原始点太疏）也抽密（供应商
-         几何过密），任意输入下的采样点数都被 MAX_POINTS 兜住。这对拖动时
-         每帧重投影的开销很关键，也让法线/笔触在疏密不均的数据上同样稳定。 */
       let step = clamp(total / MAX_POINTS, MIN_STEP_PX, MAX_STEP_PX);
-      /* 超长路线：宁可放粗步长也要守住点数上限，但放粗不超过 MAX_STEP_RELAXED */
       if (total / step > MAX_POINTS) step = Math.min(MAX_STEP_RELAXED, total / MAX_POINTS);
       const forward = [{ x: dense[0].x, y: dense[0].y }];
       let travelled = 0;
@@ -379,24 +347,19 @@
         }
         travelled = segmentEnd;
       }
-      /* 真实终点必须落在序列里，否则墨头收不到终点 */
       const tail = dense[dense.length - 1];
       const lastOut = forward[forward.length - 1];
       if (Math.hypot(tail.x - lastOut.x, tail.y - lastOut.y) > MIN_SEGMENT_PX) {
         forward.push({ x: tail.x, y: tail.y });
       }
-      /* 两遍轻平滑：粗笔触在转弯处要像毛笔转锋那样圆过去，而不是折出尖角 */
       const smoothWeight = 0.22 * Math.min(1, MAX_STEP_PX / step);
       smoothPolyline(forward, smoothWeight);
       smoothPolyline(forward, smoothWeight);
-      /* 终点 -> 起点：墨从目的地向出发地渗开 */
+      /* 终点 -> 起点：流光从目的地向出发地单向推进 */
       this.points = [];
       for (let i = forward.length - 1; i >= 0; i -= 1) this.points.push(forward[i]);
-      /* 与 points 平行的逐点风险采样：新路线直接落在当前目标风险 */
+
       const n = this.points.length;
-      this.displayRisk = new Float32Array(n);
-      for (let i = 0; i < n; i += 1) this.displayRisk[i] = this.riskTarget;
-      /* 逐点曲率（0 直 → 1 折返）：流光在弯道压缩增亮、出弯舒展用 */
       const raw = new Float32Array(n);
       for (let i = 1; i < n - 1; i += 1) {
         const a = this.points[i - 1];
@@ -424,99 +387,140 @@
       this.curve = curve;
       this.degenerate = false;
     }
-
-    /* 风险沿墨线传播：墨头（终点，index 0）先响应，墨尾（起点）滞后。
-       升高像新墨滴进入旧墨；回落更慢，留下余墨。 */
+    /* 风险色平滑：displayRisk 以指数平滑追上 targetRisk（约 0.35–0.55s 时间常数），
+       每帧都更新颜色，而不是只在滑杆 input 事件里算一次。 */
     advanceRisk(dt) {
-      const n = this.points.length;
-      if (!n) return false;
-      /* prefers-reduced-motion：不做沿墨线的浸染动画，直接落到目标风险。
-         否则每帧只走 ~5%，而这一模式又不会连续续帧，颜色会永远停在半途。 */
-      if (this.reducedMotion) {
-        for (let i = 0; i < n; i += 1) this.displayRisk[i] = this.riskTarget;
-        return false;
-      }
+      if (this.reducedMotion) { this.displayRisk = this.riskTarget; return false; }
       const route = (config.ink && config.ink.route) || {};
       const propagate = route.propagate || {};
-      const rise = propagate.rise === undefined ? 1.6 : propagate.rise;
-      const fall = propagate.fall === undefined ? 3.4 : propagate.fall;
-      const rising = this.riskTarget >= this.displayRisk[0];
-      const spread = rising ? rise : fall;
-      const nMinus = Math.max(1, n - 1);
-      let settling = false;
-      for (let i = 0; i < n; i += 1) {
-        const tau = 0.32 + spread * (i / nMinus);
-        const next = this.displayRisk[i] + (this.riskTarget - this.displayRisk[i]) * (1 - Math.exp(-dt / tau));
-        this.displayRisk[i] = next;
-        if (Math.abs(this.riskTarget - next) > 0.08) settling = true;
+      const rising = this.riskTarget >= this.displayRisk;
+      const tau = clamp((rising ? propagate.rise : propagate.fall) || 0.4, 0.02, 3);
+      this.displayRisk += (this.riskTarget - this.displayRisk) * (1 - Math.exp(-dt / tau));
+      return Math.abs(this.riskTarget - this.displayRisk) > 0.08;
+    }
+
+    bodyTaper(t) {
+      const body = (config.ink && config.ink.route && config.ink.route.body) || {};
+      const fadeStart = body.fadeStart === undefined ? 0.62 : body.fadeStart;
+      const floor = body.taperFloor === undefined ? 0.42 : body.taperFloor;
+      return floor + (1 - floor) * (1 - smoothstep(fadeStart, 1, t));
+    }
+
+    bodyWidth() {
+      const body = (config.ink && config.ink.route && config.ink.route.body) || {};
+      return body.width === undefined ? 13 : body.width;
+    }
+
+    /* 潮汐波峰能量：沿线位置 t（0=终点，1=起点）叠加若干推进波峰的亮度/宽度包络。
+       每个波峰前端集中、后端缓慢衰减，单向推进（终点 → 起点）。 */
+    waveEnergy(t) {
+      const wave = (config.ink && config.ink.route && config.ink.route.wave) || {};
+      const count = clamp(Math.round(wave.count === undefined ? 3 : wave.count), 0, 8);
+      if (!count || this.reducedMotion) return 0;
+      const risk01 = clamp(this.displayRisk / 100, 0, 1);
+      const speed = (wave.baseSpeed === undefined ? 0.09 : wave.baseSpeed)
+        * (1 + (wave.speedRisk === undefined ? 2.6 : wave.speedRisk) * risk01);
+      const travel = this.elapsed * speed;
+      const headSharp = Math.max(0.008, wave.headSharp === undefined ? 0.045 : wave.headSharp);
+      const tailLong = Math.max(0.02, wave.tailLong === undefined ? 0.30 : wave.tailLong);
+      let e = 0;
+      for (let k = 0; k < count; k += 1) {
+        const base = (k / count + k * 0.382) % 1;
+        const head = ((base + travel) % 1 + 1) % 1;
+        let d = t - head;
+        if (d > 0.5) d -= 1;
+        if (d < -0.5) d += 1;
+        const front = d >= 0 ? 1 - smoothstep(0, headSharp, d) : 1;
+        const back = d <= 0 ? Math.exp(d / tailLong) : 1;
+        e = Math.max(e, front * back);
       }
-      return settling;
+      return e;
     }
 
-    /* ── 湿墨笔触 ─────────────────────────────────────────────────────────
-       一层墨：宽度 = 基准 × 收笔走向 × 压力起伏 × 边缘毛糙 × 风险倍率。
-       phase / undulate 让每层宽度的起伏互不同相，叠起来才像"墨从边上渗进来"，
-       而不是一条等宽的带子。逐段填色，沿线的颜色渐变来自 displayRisk。 */
-    /* 起笔 / 收笔走向（各层共用，改一处即全变） */
-    fadeStartFor(sharp) {
-      return 0.24 + sharp * 0.46;
+    /* 同色相明暗（波峰亮度 + 缓慢呼吸），正数提亮、负数压暗 */
+    bodyLift(t) {
+      const route = (config.ink && config.ink.route) || {};
+      const body = route.body || {};
+      const wave = route.wave || {};
+      const w = this.waveEnergy(t);
+      const breathAmp = body.lightnessBreath === undefined ? 0.06 : body.lightnessBreath;
+      const period = Math.max(4, body.breathPeriod === undefined ? 9 : body.breathPeriod);
+      const breath = Math.sin(t * 6.283 - this.elapsed * (Math.PI * 2) / period) * breathAmp;
+      return clamp((wave.brightness === undefined ? 0.34 : wave.brightness) * w + breath, -0.6, 0.95);
     }
 
-    /* 收笔处最细能到多细：保留一定笔肉，末段收成笔锋而不是断线 */
-    tailFloorFor(sharp) {
-      return 0.34 + sharp * 0.14;
+    /* 每帧构建一次同色相明暗查找表：主体颜色全程统一，只有亮度随波峰/呼吸变化 */
+    buildColourLut() {
+      const base = rampRgb(config.ink && config.ink.coreRamp, this.displayRisk);
+      const lab = rgbToOklab(base);
+      const lut = this._colourLut || new Array(65);
+      for (let i = 0; i < 65; i += 1) {
+        const lift = -0.6 + (i / 64) * 1.55;
+        lut[i] = rgbStr(oklabToRgb(oklabLiftLab(lab, lift)));
+      }
+      this._colourLut = lut;
     }
 
-    /* 逐点尺度（taper / pressure / edge / breathe）：墨体、飞白、光脉共用同一套，
-       所以各层严丝合缝，不会各算一套。 */
-    layerScale(sharp, i, total, phase, undulate) {
+    colourAt(t) {
+      if (!this._colourLut) this.buildColourLut();
+      const lift = this.bodyLift(t);
+      const idx = clamp(Math.round((lift + 0.6) / 1.55 * 64), 0, 64);
+      return this._colourLut[idx];
+    }
+
+    layerScale(i, total, phase, undulate) {
       const route = (config.ink && config.ink.route) || {};
       const flow = route.flow || {};
-      const flowAmp = flow.amplitude === undefined ? 0.04 : flow.amplitude;
-      const flowPeriod = Math.max(8, flow.period || 16);
+      const flowAmp = flow.amplitude === undefined ? 0.05 : flow.amplitude;
+      const flowPeriod = Math.max(8, flow.period || 17);
       const time = this.reducedMotion ? 0 : this.elapsed;
       const t = i / Math.max(1, total - 1);
-      const floor = this.tailFloorFor(sharp);
-      const tailFade = 1 - smoothstep(this.fadeStartFor(sharp), 1, t);
       const ph = phase === undefined ? 0 : phase;
       const und = undulate === undefined ? 0 : undulate;
       return {
         t: t,
-        taper: floor + (1 - floor) * tailFade,
-        /* 运笔轻重：低频为主（不规则的两次谐波，避免机械正弦感） */
+        taper: this.bodyTaper(t),
         pressure: Math.max(0.75, 1
           + Math.sin(t * 2.6 + ph) * und
           + Math.sin(t * 5.9 + ph * 2.3) * und * 0.35),
-        /* 边缘：只保留近距离看得出的轻微毛糙，不再是大波浪或锯齿 */
         edge: 1
           + Math.sin(t * 7.3 + 1.8) * 0.026
           + Math.sin(t * 17.9 + 0.7) * 0.018
           + Math.sin(t * 41.3 + 2.4) * 0.010,
-        /* 所有随时间变化的细节都朝同一方向（t: 终点→起点）推进 */
         breathe: 1 + Math.sin(t * 6.1 - time * (Math.PI * 2) / flowPeriod) * flowAmp
       };
     }
 
-    /* 通用描线通道：describe(scale, risk01, i) 返回 { offset, width, alpha, color, channel } */
-    tracePass(limit, describe, channel, context, sharp, phase, undulate) {
+    /* 通用描线通道（发光层）：describe(scale, risk01, i) 返回 { offset, width, alpha, color } */
+    tracePass(limit, describe, channel, context, phase, undulate, fixedColour) {
       const ctx = context || this.ctx;
       if (!ctx) return;
       const points = this.points;
       const total = points.length;
       if (total < 2 || limit < 1) return;
+      const risk01 = clamp(this.displayRisk / 100, 0, 1);
+      let fallback = fixedColour || null;
+      if (!fallback) {
+        if (channel === 'highlight') {
+          fallback = rgbStr(rampRgb(config.ink && config.ink.highlightRamp, risk01 * 100));
+        } else if (channel === 'vein') {
+          const core = ((config.ink && config.ink.route) || {}).core || {};
+          const lift = core.veinLighten === undefined ? 0.24 : core.veinLighten;
+          fallback = rgbStr(oklabLift(rampRgb(config.ink && config.ink.coreRamp, risk01 * 100), lift));
+        } else {
+          fallback = rgbStr(rampRgb(config.ink && config.ink.coreRamp, risk01 * 100));
+        }
+      }
+
       const endIndex = Math.min(total - 1, Math.max(1, Math.floor(limit)));
       const tEnd = limit - Math.floor(limit);
       const vis = [];
       for (let i = 0; i <= endIndex; i += 1) {
-        vis.push({ x: points[i].x, y: points[i].y, risk: this.displayRisk[i] });
+        vis.push({ x: points[i].x, y: points[i].y });
       }
       if (endIndex < total - 1 && tEnd > 0) {
         const a = points[endIndex], b = points[endIndex + 1];
-        vis.push({
-          x: a.x + (b.x - a.x) * tEnd,
-          y: a.y + (b.y - a.y) * tEnd,
-          risk: this.displayRisk[endIndex] + (this.displayRisk[endIndex + 1] - this.displayRisk[endIndex]) * tEnd
-        });
+        vis.push({ x: a.x + (b.x - a.x) * tEnd, y: a.y + (b.y - a.y) * tEnd });
       }
       const n = vis.length;
       if (n < 2) return;
@@ -524,7 +528,6 @@
       const left = new Array(n);
       const right = new Array(n);
       const alpha = new Array(n);
-      const risk = new Array(n);
       const fixed = new Array(n);
       let prevNx = 0;
       let prevNy = 1;
@@ -547,22 +550,19 @@
         prevNx = nx;
         prevNy = ny;
         hasPrev = true;
-        const scale = this.layerScale(sharp === undefined ? 0.5 : sharp, i, total, phase, undulate);
-        const spec = describe(scale, vis[i].risk / 100, i) || { offset: 0, width: 0, alpha: 0 };
+        const scale = this.layerScale(i, total, phase, undulate);
+        const spec = describe(scale, risk01, i) || { offset: 0, width: 0, alpha: 0 };
         const half = Math.max(0, spec.width) * 0.5;
         left[i] = { x: vis[i].x + nx * (spec.offset + half), y: vis[i].y + ny * (spec.offset + half) };
         right[i] = { x: vis[i].x + nx * (spec.offset - half), y: vis[i].y + ny * (spec.offset - half) };
-        alpha[i] = clamp(spec.alpha, 0, 1);
-        risk[i] = vis[i].risk;
+        alpha[i] = clamp(spec.alpha * this.fadeIn, 0, 1);
         fixed[i] = spec.color || null;
       }
 
       for (let i = 0; i < n - 1; i += 1) {
-        const mid = (risk[i] + risk[i + 1]) * 0.5;
         let colour;
         if (fixed[i] || fixed[i + 1]) colour = fixed[i] || fixed[i + 1];
-        else if (channel === 'highlight') colour = rgbStr(rampRgb(config.ink && config.ink.highlightRamp, mid));
-        else colour = rgbStr(rampRgb(config.ink && config.ink.coreRamp, mid));
+        else colour = fallback;
         ctx.globalAlpha = (alpha[i] + alpha[i + 1]) * 0.5;
         ctx.fillStyle = colour;
         ctx.beginPath();
@@ -576,55 +576,58 @@
       ctx.globalAlpha = 1;
     }
 
-    /* 某一层墨体的颜色：基础深墨色 + 危险态极少量赤墨渗出（墨体本身不随风险变色） */
-    layerInk(spec, risk) {
+    /* 纯色主体：同色相羽化层，每层颜色一致、宽度递减、alpha 递增。
+       波峰让主体局部更亮、更宽，经过后恢复常态。 */
+    drawBody(limit) {
       const route = (config.ink && config.ink.route) || {};
-      const bleed = route.bleed || {};
-      const base = hexToRgb(spec.color || '#03080C');
-      const from = bleed.from === undefined ? 72 : bleed.from;
-      if (!bleed.color || risk <= from) return rgbStr(base);
-      const t = ((risk - from) / Math.max(1, 100 - from)) * (bleed.max === undefined ? 0.12 : bleed.max);
-      return rgbStr(mixRgb(base, hexToRgb(bleed.color), t));
+      const body = route.body || {};
+      const layers = (body.layers && body.layers.length) ? body.layers : [{ width: 1, alpha: 1 }];
+      const baseWidth = this.bodyWidth();
+      for (let i = 0; i < layers.length; i += 1) {
+        const layer = layers[i];
+        if (!layer || !layer.width) continue;
+        this.drawRibbon(limit, {
+          width: baseWidth * (layer.width || 1),
+          alpha: (body.alpha === undefined ? 0.9 : body.alpha) * (layer.alpha === undefined ? 0.5 : layer.alpha),
+          sharp: 0.35 + 0.22 * i,
+          phase: i * 1.7,
+          undulate: 0.05,
+          wet: false
+        });
+      }
     }
 
-    /* 一层浓墨：宽度 = 基准 × 收笔走向 × 运笔轻重 × 边缘毛糙 × 风险倍率。
-       逐段填色（风险只影响极少量赤墨渗出）。 */
+    /* 一层纯色主体：宽度 = 基准 × 收笔走向 × 运笔轻重 × 边缘毛糙 × 风险倍率 × 波峰加宽。 */
     drawRibbon(limit, spec) {
       const ctx = this.ctx;
       const points = this.points;
       const total = points.length;
       if (!spec || total < 2 || limit < 1 || !spec.width) return;
       const route = (config.ink && config.ink.route) || {};
+      const body = route.body || {};
+      const wave = route.wave || {};
       const riskCfg = route.risk || {};
-      const sh = spec.sharp === undefined ? 0.5 : spec.sharp;
       const ph = spec.phase === undefined ? 0 : spec.phase;
       const und = spec.undulate === undefined ? 0 : spec.undulate;
-      const fadeStart = this.fadeStartFor(sh);
-      const minFrac = this.tailFloorFor(sh);
-      const wet = route.wet || {};
-      const wetAmp = spec.wet === false ? 0 : (wet.alphaBreath === undefined ? 0 : wet.alphaBreath);
-      const wetPeriod = Math.max(6, wet.period || 21);
-      const wetAlong = wet.alongLine === undefined ? 0.06 : wet.alongLine;
-      const wetTime = this.reducedMotion ? 0 : this.elapsed;
-      const wetPhase = spec.wetPhase === undefined ? ph : spec.wetPhase;
+      const rn = clamp(this.displayRisk / 100, 0, 1);
       const wMin = riskCfg.width && riskCfg.width.min !== undefined ? riskCfg.width.min : 0.94;
       const wMax = riskCfg.width && riskCfg.width.max !== undefined ? riskCfg.width.max : 1.14;
       const aMin = riskCfg.alpha && riskCfg.alpha.min !== undefined ? riskCfg.alpha.min : 0.92;
-      const aMax = riskCfg.alpha && riskCfg.alpha.max !== undefined ? riskCfg.alpha.max : 1.04;
+      const aMax = riskCfg.alpha && riskCfg.alpha.max !== undefined ? riskCfg.alpha.max : 1.0;
+      const widthRisk = wMin + (wMax - wMin) * rn;
+      const alphaRisk = aMin + (aMax - aMin) * rn;
+      const waveBoost = wave.widthBoost === undefined ? 0.20 : wave.widthBoost;
+      const alphaBoost = wave.alphaBoost === undefined ? 0.12 : wave.alphaBoost;
 
       const endIndex = Math.min(total - 1, Math.max(1, Math.floor(limit)));
       const tEnd = limit - Math.floor(limit);
       const vis = [];
       for (let i = 0; i <= endIndex; i += 1) {
-        vis.push({ x: points[i].x, y: points[i].y, risk: this.displayRisk[i] });
+        vis.push({ x: points[i].x, y: points[i].y });
       }
       if (endIndex < total - 1 && tEnd > 0) {
         const a = points[endIndex], b = points[endIndex + 1];
-        vis.push({
-          x: a.x + (b.x - a.x) * tEnd,
-          y: a.y + (b.y - a.y) * tEnd,
-          risk: this.displayRisk[endIndex] + (this.displayRisk[endIndex + 1] - this.displayRisk[endIndex]) * tEnd
-        });
+        vis.push({ x: a.x + (b.x - a.x) * tEnd, y: a.y + (b.y - a.y) * tEnd });
       }
       const n = vis.length;
       if (n < 2) return;
@@ -645,8 +648,10 @@
       const left = new Array(n);
       const right = new Array(n);
       const alpha = new Array(n);
+      const colour = new Array(n);
       let startHalf = 0;
       let startAlpha = 0;
+      let startColour = 'transparent';
       for (let i = 0; i < n; i += 1) {
         const iPrev = Math.max(0, i - 1);
         const iNext = Math.min(n - 2, i);
@@ -666,8 +671,7 @@
           miter = Math.min(MITER_MAX, 1 / cosHalf);
         }
         const t = i / Math.max(1, total - 1);
-        const tailFade = 1 - smoothstep(fadeStart, 1, t);
-        const taper = minFrac + (1 - minFrac) * tailFade;
+        const taper = this.bodyTaper(t);
         const pressure = Math.max(0.75, 1
           + Math.sin(t * 2.6 + ph) * und
           + Math.sin(t * 5.9 + ph * 2.3) * und * 0.35);
@@ -675,30 +679,25 @@
           + Math.sin(t * 7.3 + 1.8) * 0.026
           + Math.sin(t * 17.9 + 0.7) * 0.018
           + Math.sin(t * 41.3 + 2.4) * 0.010;
-        const rn = vis[i].risk / 100;
-        const widthFactor = wMin + (wMax - wMin) * rn;
-        const alphaFactor = aMin + (aMax - aMin) * rn;
-        let half = spec.width * taper * pressure * edge * widthFactor * 0.5 * miter;
+        const w = this.waveEnergy(t);
+        const waveW = 1 + waveBoost * w;
+        let half = spec.width * taper * pressure * edge * widthRisk * waveW * 0.5 * miter;
         if (turn > SHARP_TURN_RAD) {
           const minLen = Math.min(a.len, b.len);
           const foldLimit = Math.max(1.2, 1.2 * minLen / Math.tan(Math.min(turn, Math.PI * 0.92) * 0.5));
           if (half > foldLimit) half = foldLimit;
         }
         if (half < 0) half = 0;
-        /* 湿墨层次：极缓的浓淡不均 + 缓慢向前推进（轮廓不受影响） */
-        const wetMod = wetAmp
-          ? 1 + Math.sin(t * 6.283 * (wetAlong * 10) - wetTime * (Math.PI * 2) / wetPeriod + wetPhase) * wetAmp
-          : 1;
-        if (i === 0) { startHalf = half; startAlpha = clamp(spec.alpha * alphaFactor * wetMod, 0, 1); }
         left[i] = { x: vis[i].x + nx * half, y: vis[i].y + ny * half };
-        right[i] = { x: vis[i].x - nx * half, y: vis[i].y - ny * half };
-        alpha[i] = clamp(spec.alpha * alphaFactor * wetMod, 0, 1);
+        right[i] = { x: vis[i].x + nx * -half, y: vis[i].y + ny * -half };
+        alpha[i] = clamp(spec.alpha * alphaRisk * (1 + alphaBoost * w) * this.fadeIn, 0, 1);
+        colour[i] = this.colourAt(t);
+        if (i === 0) { startHalf = half; startAlpha = alpha[0]; startColour = colour[0]; }
       }
 
       for (let i = 0; i < n - 1; i += 1) {
-        const mid = (vis[i].risk + vis[i + 1].risk) * 0.5;
         ctx.globalAlpha = (alpha[i] + alpha[i + 1]) * 0.5;
-        ctx.fillStyle = this.layerInk(spec, mid);
+        ctx.fillStyle = colour[i];
         ctx.beginPath();
         ctx.moveTo(left[i].x, left[i].y);
         ctx.lineTo(left[i + 1].x, left[i + 1].y);
@@ -708,104 +707,31 @@
         ctx.fill();
       }
       ctx.globalAlpha = 1;
-      /* 起笔处补圆头：落笔是圆的，不是平口 */
+      /* 起笔处补圆头 */
       if (spec.cap !== false && startHalf > 0.45 && n > 1) {
         ctx.globalAlpha = startAlpha;
-        ctx.fillStyle = this.layerInk(spec, vis[0].risk);
+        ctx.fillStyle = startColour;
         ctx.beginPath();
         ctx.arc(vis[0].x, vis[0].y, startHalf, 0, Math.PI * 2);
         ctx.fill();
         ctx.globalAlpha = 1;
       }
     }
-
-    /* 弯道强度 0..1（0.35 rad/π 视为满值）：流光压缩增亮用 */
     curveAt(i) {
       if (!this.curve || !this.curve.length) return 0;
       const raw = this.curve[Math.max(0, Math.min(this.curve.length - 1, i))] || 0;
       return clamp(raw / 0.35, 0, 1);
     }
 
-    /* 墨体最外层宽度（光脉/柔光的比例基准） */
-    bodyWidth() {
-      const route = (config.ink && config.ink.route) || {};
-      const passes = route.passes || [];
-      let width = 0;
-      for (let i = 0; i < passes.length; i += 1) {
-        if (passes[i] && passes[i].width > width) width = passes[i].width;
-      }
-      return width || 12;
-    }
-
-    /* 墨体：① 外围墨晕 ② 浓墨主体（#12252D → #03080C）③ 墨脊 ④ 少量贴边毛边 */
-    drawInkMass(limit) {
-      const route = (config.ink && config.ink.route) || {};
-      const halo = route.halo || {};
-      if (halo.width) {
-        this.drawRibbon(limit, {
-          width: halo.width, alpha: halo.alpha === undefined ? 0.05 : halo.alpha,
-          sharp: 0, color: halo.color, phase: halo.phase, undulate: halo.undulate
-        });
-      }
-      const passes = route.passes || [];
-      for (let i = 0; i < passes.length; i += 1) {
-        if (!passes[i] || !passes[i].width) continue;
-        this.drawRibbon(limit, passes[i]);
-      }
-      this.drawBristles(limit);
-      const bone = route.bone || {};
-      if (bone.width) this.drawRibbon(limit, bone);
-    }
-
-    /* 飞白：只留少量紧贴主线的短毛边（不再向外伸、不再平行长划痕） */
-    drawBristles(limit) {
-      const route = (config.ink && config.ink.route) || {};
-      const cfg = route.bristle;
-      if (!cfg || !cfg.strands) return;
-      const bodyHalf = this.bodyWidth() * 0.5;
-      const scatter = cfg.scatter === undefined ? 0.5 : cfg.scatter;
-      const tailKeep = cfg.tailKeep === undefined ? 0.45 : cfg.tailKeep;
-      const count = Math.max(0, Math.round(cfg.strands));
-      const perSide = Math.max(1, Math.ceil(count / 2));
-      const bristleDrift = this.reducedMotion ? 0 : this.elapsed * (cfg.drift === undefined ? 0.05 : cfg.drift);
-      for (let k = 0; k < count; k += 1) {
-        const side = k % 2 === 0 ? 1 : -1;
-        const rank = Math.floor(k / 2) + 1;
-        const reach = cfg.inner + (cfg.outer - cfg.inner) * (rank / perSide);
-        const phase = k * 2.3 + 0.7;
-        const startAt = (k * 37 % 100) / 100 * scatter;
-        const endAt = Math.min(1, Math.max(startAt + 0.3, 1 - (k * 53 % 100) / 100 * (1 - tailKeep)));
-        const colour = cfg.color;
-        this.tracePass(limit, function (scale) {
-          const t = scale.t;
-          const life = smoothstep(startAt, startAt + 0.10, t) * (1 - smoothstep(endAt - 0.14, endAt, t));
-          if (life <= 0.002) return { offset: 0, width: 0, alpha: 0 };
-          /* 断续图案整体朝前缓慢偏移：与流光、拖尾同向 */
-          const gate = 0.35 + 0.65 * smoothstep(-0.35, 0.45, Math.sin(t * 12.7 + phase * 2.1 - bristleDrift));
-          return {
-            offset: side * bodyHalf * reach * scale.taper * scale.pressure * scale.breathe,
-            width: cfg.width * (0.85 + 0.3 * scale.breathe),
-            alpha: cfg.alpha * gate * life,
-            color: colour
-          };
-        }, 'ink', null, 0.6, cfg.phase, cfg.undulate);
-      }
-    }
-
-    /* 中央流光（规范 §3–§10）：
-       ③ 深青过渡层（画在墨层上，让光像从浓墨里透出）
-       ② 外层柔光（screen，很淡、紧贴墨心）
-       ① 主光脉：连续、细、居中，只做很轻的明暗游走，不熄灭
-       ④ 推进的高亮流段：前端尖而亮、尾部柔而长（明显拖尾）
-       弯道：流光轻微压缩并增亮，出弯重新舒展。 */
+    /* 中央流光：同色柔光 + 连续光芯 + 光流丝 + 推进高光（screen 混合） */
     drawCore(limit) {
       const route = (config.ink && config.ink.route) || {};
       const cfg = route.core;
-      if (!cfg || cfg.enabled === false) return;
+      if (!cfg || cfg.enabled === false || !this.glowCtx) return;
       const self = this;
       const body = this.bodyWidth();
-      const risk01 = clamp(this.riskTarget / 100, 0, 1);
-      const hold = cfg.hold === undefined ? 0.10 : cfg.hold;
+      const risk01 = clamp(this.displayRisk / 100, 0, 1);
+      const hold = cfg.hold === undefined ? 0.08 : cfg.hold;
       const envelope = function (t) {
         return smoothstep(0, hold, t) * (1 - smoothstep(1 - hold, 1, t));
       };
@@ -813,95 +739,149 @@
       const compress = corner.compress === undefined ? 0.40 : corner.compress;
       const brighten = corner.brighten === undefined ? 0.55 : corner.brighten;
       const curveOf = function (i) { return self.curveAt(i); };
-      /* 所有随时间变化的细节都朝同一方向推进（t: 终点 → 起点） */
       const time = this.reducedMotion ? 0 : this.elapsed;
       const veinDrift = time * (cfg.veinDrift === undefined ? 0.22 : cfg.veinDrift);
-      const veinWidth = Math.max(1.2, body * (cfg.veinRatio === undefined ? 0.12 : cfg.veinRatio));
-      const glowRange = cfg.glowRatio || { min: 0.28, max: 0.42 };
+      const veinWidth = Math.max(1.2, body * (cfg.veinRatio === undefined ? 0.16 : cfg.veinRatio));
+      const glowRange = cfg.glowRatio || { min: 0.55, max: 0.92 };
       const glowWidth = body * (glowRange.min + ((glowRange.max || glowRange.min) - glowRange.min) * risk01);
 
-      /* ③ 深青过渡层：在墨层上用 source-over 轻微提亮墨心 → 光从内部透出 */
-      const tr = cfg.transition;
-      if (tr && this.ctx) {
-        this.tracePass(limit, function (scale, risk, i) {
-          const e = envelope(scale.t);
-          if (e <= 0.002) return { offset: 0, width: 0, alpha: 0 };
-          const c = curveOf(i);
-          return {
-            offset: 0,
-            width: body * (tr.widthRatio === undefined ? 0.26 : tr.widthRatio) * e
-              * (0.92 + 0.08 * Math.sin(scale.t * 4.3 - veinDrift * 0.6))
-              * (1 - compress * 0.45 * c),
-            alpha: clamp((tr.alpha === undefined ? 0.60 : tr.alpha) * e
-              * (0.86 + 0.14 * scale.breathe) * (1 + brighten * 0.30 * c), 0, 1),
-            color: tr.color
-          };
-        }, 'ink', this.ctx, 0.8, cfg.phase, cfg.undulate);
-      }
-
-      /* ② 外层柔光：很淡、贴着墨心（不允许大幅超出墨线） */
+      /* 同色柔光：中心亮、两侧渐隐，宽度不越出主体太远 */
       this.tracePass(limit, function (scale, risk, i) {
         const e = envelope(scale.t);
         if (e <= 0.002) return { offset: 0, width: 0, alpha: 0 };
         const c = curveOf(i);
+        const w = self.waveEnergy(scale.t);
         return {
           offset: 0,
           width: glowWidth * e * (0.9 + 0.1 * scale.taper) * (1 - compress * 0.25 * c),
-          alpha: (cfg.glowAlpha === undefined ? 0.14 : cfg.glowAlpha) * e
-            * (0.85 + 0.15 * scale.breathe) * (1 + brighten * 0.25 * c)
+          alpha: (cfg.glowAlpha === undefined ? 0.30 : cfg.glowAlpha) * e
+            * (0.75 + 0.55 * risk01) * (0.85 + 0.15 * scale.breathe) * (1 + brighten * 0.25 * c) * (1 + 0.25 * w)
         };
-      }, 'core', this.glowCtx, 0.5, cfg.phase, cfg.undulate);
+      }, 'core', this.glowCtx, cfg.phase, cfg.undulate);
 
-      /* ① 主光脉：连续存在、细、始终居中；仅轻微明暗游走（沿线条缓慢前行） */
+      /* 连续光芯：始终存在，极轻明暗与宽度呼吸，波峰经过时更亮 */
       this.tracePass(limit, function (scale, risk, i) {
         const e = envelope(scale.t);
         if (e <= 0.002) return { offset: 0, width: 0, alpha: 0 };
         const c = curveOf(i);
-        const wander = 0.90 + 0.10 * Math.sin(scale.t * 3.1 - veinDrift);
+        const w = self.waveEnergy(scale.t);
+        const breeze = 0.94 + 0.06 * Math.sin(scale.t * 3.1 - veinDrift);
         return {
           offset: 0,
-          width: veinWidth * e * (0.9 + 0.1 * scale.taper) * (1 - compress * c),
-          alpha: clamp((cfg.veinAlpha === undefined ? 0.62 : cfg.veinAlpha) * e * wander
-            * (1 + brighten * 0.45 * c), 0, 1)
+          width: veinWidth * e * (0.92 + 0.08 * scale.taper) * breeze * (1 - compress * c) * (1 + 0.18 * w),
+          alpha: clamp((cfg.veinAlpha === undefined ? 0.85 : cfg.veinAlpha) * e * breeze
+            * (1 + brighten * 0.40 * c) * (1 + 0.30 * w), 0, 1)
         };
-      }, 'core', this.glowCtx, 0.85, cfg.phase, cfg.undulate);
+      }, 'vein', this.glowCtx, cfg.phase, cfg.undulate);
 
-      /* ④ 高亮流段：前端尖而亮、尾部柔而长（拖尾），沿光脉单向推进 */
+      /* 光流丝：贴着光芯的细光，速度略有差异 */
+      const fl = cfg.filament || {};
+      const flCount = Math.max(0, Math.round(fl.count === undefined ? 3 : fl.count));
+      const flWidth = Math.max(0.4, veinWidth * (fl.widthRatio === undefined ? 0.22 : fl.widthRatio));
+      const flHold = fl.hold === undefined ? 0.16 : fl.hold;
+      const flSpeed = fl.speed === undefined ? 0.09 : fl.speed;
+      const flSpread = (fl.spreadRatio === undefined ? 0.30 : fl.spreadRatio) * veinWidth * 0.5;
+      const flTravel = this.reducedMotion ? 0 : this.elapsed * flSpeed;
+      for (let k = 0; k < flCount; k += 1) {
+        const lane = (k - (flCount - 1) / 2) * (k % 2 === 0 ? 1 : -1) * 0.6;
+        const phaseOffset = k * 1.9;
+        this.tracePass(limit, function (scale, risk, i) {
+          const e = smoothstep(0, flHold, scale.t) * (1 - smoothstep(1 - flHold, 1, scale.t));
+          if (e <= 0.002) return { offset: 0, width: 0, alpha: 0 };
+          const head = ((k / flCount + flTravel + phaseOffset * 0.05) % 1 + 1) % 1;
+          let d = scale.t - head;
+          if (d > 0.5) d -= 1;
+          if (d < -0.5) d += 1;
+          const win = 1 - smoothstep(0, 0.30, Math.abs(d));
+          if (win <= 0.02) return { offset: 0, width: 0, alpha: 0 };
+          return {
+            offset: lane * e,
+            width: flWidth * e * (0.8 + 0.4 * win),
+            alpha: (fl.alpha === undefined ? 0.32 : fl.alpha) * win * e * (0.9 + 0.1 * scale.breathe)
+          };
+        }, 'highlight', this.glowCtx, cfg.phase, cfg.undulate);
+      }
+
+      /* 推进高光流段：前端尖亮、尾部柔长，拖尾随风险变长，弯道压缩增亮 */
       const hl = cfg.highlight || {};
       const count = Math.max(0, Math.round(hl.count === undefined ? 3 : hl.count));
       if (!count) return;
-      const headLen = Math.max(0.004, hl.headLength === undefined ? 0.014 : hl.headLength);
-      const tailLen = Math.max(headLen, hl.tailLength === undefined ? 0.115 : hl.tailLength);
-      const speed = (hl.speed === undefined ? 0.13 : hl.speed)
-        * (1 + (hl.speedRisk === undefined ? 1.9 : hl.speedRisk) * risk01);
+      const headLen = Math.max(0.004, hl.headLength === undefined ? 0.012 : hl.headLength);
+      const tailLen = Math.max(headLen, (hl.tailLength === undefined ? 0.10 : hl.tailLength)
+        * (1 + (hl.tailRisk === undefined ? 0.5 : hl.tailRisk) * risk01));
+      const speed = (hl.speed === undefined ? 0.12 : hl.speed)
+        * (1 + (hl.speedRisk === undefined ? 2.0 : hl.speedRisk) * risk01);
       const travel = this.reducedMotion ? 0 : this.elapsed * speed;
+      if (!this.pulseHeads) this.pulseHeads = [];
       for (let k = 0; k < count; k += 1) {
-        /* 三段错开分布，避免等距整齐排列 */
         const base = (k / count + (k === 1 ? 0.37 : k === 2 ? 0.68 : 0)) % 1;
+        const head = ((base + travel) % 1 + 1) % 1;
+        const prev = this.pulseHeads[k];
+        if (!this.reducedMotion && prev !== undefined && head < prev - 0.25) {
+          const pulses = cfg.pulse || {};
+          if (pulses.enabled !== false && this.pulses.length < 3) {
+            const last = this.points[this.points.length - 1];
+            this.pulses.push({
+              t: 0,
+              x: last.x,
+              y: last.y,
+              risk: this.displayRisk,
+              life: pulses.life === undefined ? 1.5 : pulses.life,
+              radius: pulses.radius || [5, 30],
+              alpha: pulses.alpha === undefined ? 0.30 : pulses.alpha
+            });
+          }
+        }
+        this.pulseHeads[k] = head;
         this.tracePass(limit, function (scale, risk, i) {
           const e = envelope(scale.t);
           if (e <= 0.002) return { offset: 0, width: 0, alpha: 0 };
-          const head = ((base + travel) % 1 + 1) % 1;
-          let d = scale.t - head;               /* d>0 在流段前方（更靠近起点） */
+          let d = scale.t - head;
           if (d > 0.5) d -= 1;
           if (d < -0.5) d += 1;
-          const front = d >= 0 ? 1 - smoothstep(0, headLen, d) : 1;   /* 前端：尖 */
-          const tail = d <= 0 ? Math.exp(d / tailLen) : 1;            /* 尾部：长而柔 */
+          const front = d >= 0 ? 1 - smoothstep(0, headLen, d) : 1;
+          const tail = d <= 0 ? Math.exp(d / tailLen) : 1;
           const win = front * tail;
           if (win <= 0.012) return { offset: 0, width: 0, alpha: 0 };
-          const tailFade = d <= 0 ? clamp(-d / tailLen, 0, 1) : 0;    /* 拖尾越远越宽越淡 */
+          const tailFade = d <= 0 ? clamp(-d / tailLen, 0, 1) : 0;
           const c = curveOf(i);
           return {
             offset: 0,
-            width: (hl.width === undefined ? 0.55 : hl.width) * (0.55 + 2.4 * tailFade)
-              * (1 - compress * 0.2 * c) + veinWidth * 0.15,
+            width: (hl.width === undefined ? 0.9 : hl.width) * (0.55 + 2.4 * tailFade)
+              * (1 - compress * 0.2 * c) + veinWidth * 0.18,
             alpha: clamp((hl.alpha === undefined ? 0.98 : hl.alpha) * win * e
               * (1 + brighten * 0.30 * c), 0, 1)
           };
-        }, 'highlight', this.glowCtx, 0.85, cfg.phase, cfg.undulate);
+        }, 'highlight', this.glowCtx, cfg.phase, cfg.undulate);
       }
     }
-    /* 墨头：生长中的湿墨，稍浓、略湿，压在纸上向四周轻微渗开，不发光。 */
+
+    drawPulses() {
+      const ctx = this.glowCtx;
+      if (!ctx || !this.pulses || !this.pulses.length) return;
+      if (this.reducedMotion) { this.pulses.length = 0; return; }
+      const time = this.elapsed;
+      for (let i = this.pulses.length - 1; i >= 0; i -= 1) {
+        const pulse = this.pulses[i];
+        const age = time - pulse.t;
+        const life = Math.max(0.2, pulse.life || 1.5);
+        if (age < 0 || age > life) { this.pulses.splice(i, 1); continue; }
+        const k = age / life;
+        const radius = pulse.radius[0] + (pulse.radius[1] - pulse.radius[0]) * k;
+        const fade = (1 - k) * (1 - k) * (pulse.alpha || 0.30);
+        const ink = rampRgb(config.ink && config.ink.coreRamp, pulse.risk);
+        const grad = ctx.createRadialGradient(pulse.x, pulse.y, radius * 0.35, pulse.x, pulse.y, radius);
+        grad.addColorStop(0, 'rgba(' + ink[0] + ',' + ink[1] + ',' + ink[2] + ',0)');
+        grad.addColorStop(0.72, 'rgba(' + ink[0] + ',' + ink[1] + ',' + ink[2] + ',' + (fade * 0.85).toFixed(3) + ')');
+        grad.addColorStop(1, 'rgba(' + ink[0] + ',' + ink[1] + ',' + ink[2] + ',0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(pulse.x, pulse.y, radius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    /* 生长中的笔头：同色相柔光，不是黑点 */
     drawHead(progress) {
       if (progress >= 1 || this.points.length < 2) return;
       const index = Math.min(this.points.length - 2, Math.floor(progress * (this.points.length - 1)));
@@ -909,38 +889,36 @@
       const a = this.points[index], b = this.points[index + 1];
       const x = a.x + (b.x - a.x) * t;
       const y = a.y + (b.y - a.y) * t;
-      const risk = this.displayRisk[index] + (this.displayRisk[index + 1] - this.displayRisk[index]) * t;
-      const bone = (config.ink && config.ink.route && config.ink.route.bone) || {};
-      const ink = inkColour(risk, null, bone.color);
+      const base = rampRgb(config.ink && config.ink.coreRamp, this.displayRisk);
+      const bright = oklabLift(base, 0.35);
       const cfg = (config.ink && config.ink.route && config.ink.route.head) || {};
       const radius = cfg.radius === undefined ? 3.4 : cfg.radius;
-      const alpha = cfg.alpha === undefined ? 0.92 : cfg.alpha;
+      const alpha = cfg.alpha === undefined ? 0.85 : cfg.alpha;
       const ctx = this.ctx;
       const halo = ctx.createRadialGradient(x, y, 0, x, y, radius * 3.4);
-      halo.addColorStop(0, 'rgba(' + ink.r + ',' + ink.g + ',' + ink.b + ',' + (alpha * 0.30).toFixed(3) + ')');
-      halo.addColorStop(0.6, 'rgba(' + ink.r + ',' + ink.g + ',' + ink.b + ',' + (alpha * 0.12).toFixed(3) + ')');
-      halo.addColorStop(1, 'rgba(' + ink.r + ',' + ink.g + ',' + ink.b + ',0)');
+      halo.addColorStop(0, 'rgba(' + bright[0] + ',' + bright[1] + ',' + bright[2] + ',' + (alpha * 0.45).toFixed(3) + ')');
+      halo.addColorStop(0.55, 'rgba(' + base[0] + ',' + base[1] + ',' + base[2] + ',' + (alpha * 0.20).toFixed(3) + ')');
+      halo.addColorStop(1, 'rgba(' + base[0] + ',' + base[1] + ',' + base[2] + ',0)');
       ctx.fillStyle = halo;
       ctx.beginPath();
       ctx.arc(x, y, radius * 3.4, 0, Math.PI * 2);
       ctx.fill();
       ctx.globalAlpha = alpha;
-      ctx.fillStyle = ink.str;
+      ctx.fillStyle = rgbStr(bright);
       ctx.beginPath();
       ctx.arc(x, y, radius, 0, Math.PI * 2);
       ctx.fill();
       ctx.globalAlpha = 1;
     }
 
-    /* 非真实道路路线：一条克制的虚线示意，明确区别于水墨实笔。
-       规划失败时更淡，并保留起终点墨点，让"这里只有两个点"一眼可读。 */
+    /* 非真实道路路线：一条克制的虚线示意，明确区别于真实流光。 */
     drawPreview() {
       const ctx = this.ctx;
       const points = this.points;
       if (!ctx || points.length < 2) return;
       const failed = this.kind === 'failed';
-      const ink = inkColour(failed ? 24 : this.riskTarget);
-      const alpha = failed ? 0.30 : 0.42;
+      const ink = { r: failed ? 108 : 92, g: failed ? 116 : 110, b: failed ? 120 : 118 };
+      const alpha = failed ? 0.34 : 0.46;
       ctx.save();
       ctx.setLineDash([6, 7]);
       ctx.lineWidth = 1.4;
@@ -961,7 +939,6 @@
       }
       ctx.restore();
     }
-
     draw() {
       if (!this.ctx) return;
       if (this.routeDirty) this.rebuild();
@@ -969,49 +946,39 @@
       if (this.glowCtx) this.glowCtx.clearRect(0, 0, this.width, this.height);
       if (this.points.length < 2) return;
       if (this.kind !== 'road') { this.drawPreview(); return; }
+      this.buildColourLut();
       const limit = (this.points.length - 1) * this.progress;
-      /* ① 墨晕 ② 浓墨主体 ③ 墨脊 ④ 贴边毛边 → ⑤ 中央流光（独立 screen 层） */
-      this.drawInkMass(limit);
+      this.drawBody(limit);
       this.drawCore(limit);
-      /* 墨头：只在生长过程中出现，写完后静置 */
+      this.drawPulses();
       if (this.progress < 1) this.drawHead(this.progress);
     }
 
     frame(timestamp) {
       this.framePending = false;
       if (!this.running || !this.visible) return;
-      if (this.maybeResizeForDpr()) return;   /* 尺寸重建后由下一次帧完成绘制 */
-      /* dt 只用于物理量积分；写线进度用独立的、上限更宽的时钟，
-         这样低帧率设备上墨线仍在设定时长附近写完，而不是按帧数慢慢爬。 */
+      if (this.maybeResizeForDpr()) return;
       const raw = this.lastTime ? (timestamp - this.lastTime) / 1000 : 0;
       this.lastTime = timestamp;
       const dt = clamp(raw, 0, PHYSICS_DT_CAP);
       const writeDt = clamp(raw, 0, WRITE_DT_CAP);
       this.elapsed += this.reducedMotion ? 0 : dt;
+      if (this.fadeIn < 1) this.fadeIn = Math.min(1, this.fadeIn + dt / 0.35);
       this.hover += (this.hoverTarget - this.hover) * (1 - Math.exp(-dt / 0.35));
       if (Math.abs(this.hoverTarget - this.hover) < HOVER_EPS) this.hover = this.hoverTarget;
-      const settling = this.advanceRisk(dt);
+      this.advanceRisk(dt);
       if (!this.reducedMotion && this.kind === 'road' && this.progress < 1) {
-        const grow = (config.ink && config.ink.route && config.ink.route.growSeconds) || 5.2;
+        const grow = (config.ink && config.ink.route && config.ink.route.growSeconds) || 2.6;
         this.writeElapsed += writeDt;
         this.progress = Math.min(1, this.writeElapsed / grow);
       }
       this.draw();
-      if (this.points.length < 2) return;  /* 尚无路线：不空转 */
-      const active = !this.reducedMotion && this.kind === 'road' && (this.progress < 1 || settling
-        || Math.abs(this.hoverTarget - this.hover) > HOVER_EPS);
-      if (active) {
-        this.requestFrame();
-      } else if (!this.reducedMotion && this.kind === 'road') {
-        /* 稳定态仍有极轻微流动，低频重绘，几乎不占 CPU */
-        global.clearTimeout(this.frameTimer);
-        this.frameTimer = global.setTimeout(this.boundRequest, IDLE_REFRESH_MS);
-      }
+      /* 真实路线持续流动：潮汐波峰/光流丝/推进高光永远在动，保持满帧。 */
+      if (this.kind === 'road' && !this.reducedMotion) this.requestFrame();
     }
 
     setVisible(visible) {
       this.visible = !!visible;
-      /* 复位时间基准：切回前台时不会因为跳变的时间戳让墨线瞬间写完或抖动 */
       this.lastTime = 0;
       if (!this.visible) {
         global.clearTimeout(this.frameTimer);
@@ -1039,7 +1006,6 @@
       global.clearTimeout(this.frameTimer);
     }
 
-    /* 供测试与调试读取的运行状态（不改变渲染行为）。 */
     getState() {
       return {
         kind: this.kind,
@@ -1054,7 +1020,7 @@
 
     getMetrics() {
       return {
-        backend: '连续墨线',
+        backend: '纯色流光',
         kind: this.kind,
         points: this.points.length,
         written: Math.round(this.progress * 100)

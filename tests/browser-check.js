@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 /* 单程墨线 浏览器回归测试（真实 Edge/Chrome + CDP，不依赖 npm 包）。
    运行：node tests/browser-check.js            全部场景
         node tests/browser-check.js pan hover  只跑指定场景
@@ -37,13 +37,14 @@ window.__t = {
   },
   inkStats: function (threshold) {
     const p = this.pixels();
-    let count = 0, max = 0;
+    let count = 0, max = 0, sum = 0;
     for (let i = 3; i < p.data.data.length; i += 4) {
       const a = p.data.data[i];
       if (a > max) max = a;
-      if (a >= (threshold === undefined ? 8 : threshold)) count += 1;
+      if (a >= (threshold === undefined ? 8 : threshold)) { count += 1; sum += a; }
     }
-    return { count: count, maxAlpha: max, pixels: p.w * p.h };
+    return { count: count, maxAlpha: max, pixels: p.w * p.h,
+      meanAlpha: Math.round(sum / Math.max(1, count) * 10) / 10 };
   },
 `;const HELPERS_B = `
   /* 固定路线位置上，垂直于墨线扫描得到墨迹宽度（像素） */
@@ -465,13 +466,17 @@ async function scenarioMapSync(page) {
   check('惯性滑动：持续重绘而非停在待机（rebuild ≥ 3）', inertiaHooks.rebuilds >= 3, JSON.stringify(inertiaHooks));
 
   await sleep(700);
+  /* 新契约：真实路线持续流动（潮汐波峰永远在动）。headless 页面可能被当作后台页，
+     先置前并强制可见，保证测的是渲染本身而不是后台节流。 */
+  await page.browser.send('Page.bringToFront', {}, page.sessionId);
   await page.evaluate(`(() => { window.RiskTideApp.inkFlow.hover = 0; window.RiskTideApp.inkFlow.hoverTarget = 0;
+    window.RiskTideApp.inkFlow.setVisible(true);
     window.__t.h = { draws: 0, rebuilds: 0 }; return 'ok'; })()`);
   await sleep(1500);
   const idle = await page.evaluate(`window.__t.h`);
-  /* 静止态现在约 9Hz（要让墨看得见流动），仍然是低频而非满帧 */
-  check('静止后：低频重绘（1.5s 内 ≤ 22 帧）', idle.draws <= 22, JSON.stringify(idle));
-  check('静止后：仍有墨晕流动（≥ 2 帧）', idle.draws >= 2, JSON.stringify(idle));
+  /* 静止态持续满帧流动：光流与潮汐波峰不停止，但不做无谓的重新投影。 */
+  check('静止后：流光持续重绘（1.5s 内 ≥ 30 帧）', idle.draws >= 30, JSON.stringify(idle));
+  check('静止后：不因静止而重新投影（rebuild = 0）', idle.rebuilds === 0, JSON.stringify(idle));
   return { dragMax, zoomMax, inertiaMax, idle };
 }
 async function scenarioHoverClickKeyboard(page) {
@@ -1227,7 +1232,7 @@ async function scenarioRouteChange(page) {
     Math.abs(risky.ink.cx - moved.ink.cx) <= 6 && Math.abs(risky.ink.cy - moved.ink.cy) <= 6
       && risky.ink.w >= moved.ink.w - 2,
     JSON.stringify({ before: moved.ink, after: risky.ink }));
-  check('只改时间条件：墨色随风险变深（行程时间有效时）',
+  check('只改时间条件：墨色随风险连续变化（青蓝→金→赤，行程时间有效时）',
     sliderBefore.routeMinutes > 0 && risky.risk > 70 && colourDeltaAfter > 10,
     JSON.stringify({ routeMinutes: sliderBefore.routeMinutes, risk: [sliderBefore.risk, risky.risk],
       rgb: [sliderBefore.rgb, risky.ink.rgb] }));
@@ -1266,7 +1271,10 @@ async function scenarioFlow(page) {
   /* 确定性方向断言：把流动高光临时收成 1 段、速度调成 0.1/s，
      这样它在采样区间内不会回绕，位置 t 必须单调递增（终点 → 起点）。 */
   await page.evaluate(`(() => {
-    const cfg = window.RiskTideConfig.ink.route.core.highlight;
+    const core = window.RiskTideConfig.ink.route.core;
+    core.veinAlpha = 0.12;          // 临时压暗主脉：这样"亮像素"只可能是高光
+    core.filament.count = 0;
+    const cfg = core.highlight;
     cfg.count = 1;
     cfg.speed = 0.1;
     cfg.speedRisk = 0;
@@ -1291,9 +1299,17 @@ async function scenarioFlow(page) {
       const soft = window.__t.widthAt(idx, 8);
       const stats = window.__t.inkStats(8);
       const glow = window.__t.glowStats(8);          // 主光脉 + 柔光：应当持续存在
-      const bright = window.__t.brightTrack(210);    // 冷白高光：测它的沿线位置（不是数量）
+      const bright = window.__t.brightTrack(150);    // 冷白高光（主脉已压暗，150 只圈到高光）
       const box = window.__t.centerBox();
-      return { soft: soft, pixels: stats.count, glow: glow.count, bright: bright.count, brightT: bright.t,
+      const cv = document.getElementById('silk-canvas');
+      const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+      const p = f.points[idx];
+      const px = Math.round(p.x * (cv.width / cv.getBoundingClientRect().width));
+      const py = Math.round(p.y * (cv.height / cv.getBoundingClientRect().height));
+      const oi = (py * cv.width + px) * 4;
+      const bodyRgb = [d[oi], d[oi + 1], d[oi + 2]];
+      return { soft: soft, pixels: stats.count, meanAlpha: stats.meanAlpha, glow: glow.count, bright: bright.count, brightT: bright.t,
+        bodyRgb: bodyRgb,
         box: [box.l, box.t, box.r, box.b], elapsed: Math.round(f.elapsed * 10) / 10 };
     })()`);
   };
@@ -1323,8 +1339,16 @@ async function scenarioFlow(page) {
     tracked && tracked[tracked.length - 1] - tracked[0] > 0.05
       && tracked.every((t, i) => i === 0 || t >= tracked[i - 1] - 0.002),
     'brightT=' + JSON.stringify(brightTs) + ' count=' + JSON.stringify(brights));
-  check('静止态流动：墨迹量随时间变化（≥0.5%）', pixelSpread >= 0.005,
+  /* 新契约：主体"轮廓稳定、同色相明暗呼吸"——像素量基本不变，变化体现在平均亮度（RGB）上。 */
+  const alphas = samples.map((s) => s.meanAlpha);
+  const alphaSpread = (Math.max.apply(null, alphas) - Math.min.apply(null, alphas)) / Math.max(1, Math.max.apply(null, alphas));
+  check('静止态流动：轮廓稳定（墨迹像素量波动 ≤ 2%）', pixelSpread <= 0.02,
     'pixels=' + JSON.stringify(pixels) + ' spread=' + Math.round(pixelSpread * 100) + '%');
+  const bodyRgbs = samples.map((s) => s.bodyRgb);
+  const bodySums = bodyRgbs.map((rgb) => (rgb ? rgb[0] + rgb[1] + rgb[2] : 0));
+  const bodySpread = (Math.max.apply(null, bodySums) - Math.min.apply(null, bodySums)) / Math.max(1, Math.max.apply(null, bodySums));
+  check('静止态流动：同色相明暗在缓慢呼吸（平均亮度波动 ≥ 0.4%）', bodySpread >= 0.004,
+    'bodyRGB=' + JSON.stringify(bodyRgbs) + ' spread=' + Math.round(bodySpread * 1000) / 10 + '%');
   check('静止态流动：幅度克制（宽度变化 ≤ 25%，不是闪烁）', spread <= 0.25,
     'spread=' + Math.round(spread * 100) + '%');
   check('静止态流动：中轴线纹丝不动（是流动不是抖动）', sameBox,
@@ -1349,7 +1373,7 @@ async function scenarioFlow(page) {
   check('静止态流动：prefers-reduced-motion 下完全静止（两次采样一致）',
     still1.soft === still2.soft && still1.pixels === still2.pixels,
     JSON.stringify({ a: still1.soft, b: still2.soft, pa: still1.pixels, pb: still2.pixels }));
-  return { samples, spread, pixelSpread, glowSpread };
+  return { samples, spread, pixelSpread, glowSpread, alphaSpread };
 }
 
 async function scenarioNation(browser) {

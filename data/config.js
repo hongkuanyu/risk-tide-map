@@ -1,4 +1,4 @@
-/* global window */
+﻿/* global window */
 (function (global) {
   'use strict';
 
@@ -220,13 +220,16 @@
         { at: 0.94, rgb: [46, 44, 38] },     // 深墨平台
         { at: 1.00, rgb: [136, 52, 42] }     // 朱砂暗渗（红比原来更看得见）
       ],
-      /* 主光脉色阶（风险三段，平滑插值，不允许跳变）：
-         安全 #68DFED 青蓝 → 临界 #EABB6C 金 → 危险 #E66A5A 赤红。
-         这是路线墨线的"时间压力"通道；墨体本身始终保持深墨黑，不随风险变色。 */
+      /* 主光脉色阶（全程统一风险主题色，OKLab 连续插值，不允许跳变）：
+         0-30 青瓷蓝 #69D6DA -> 48 青玉 #9ED1BD -> 70 香槟金 #E5BD7B
+         -> 85 暖琥珀 #DFA079 -> 100 珊瑚赤 #D86870。 */
       coreRamp: [
-        { at: 0.00, rgb: [104, 223, 237] },  // #68DFED 青蓝 · 安全
-        { at: 0.55, rgb: [234, 187, 108] },  // #EABB6C 金 · 临界
-        { at: 1.00, rgb: [230, 106, 90] }    // #E66A5A 赤红 · 危险
+        { at: 0.00, rgb: [105, 214, 218] },  // #69D6DA 青瓷蓝 · 安全
+        { at: 0.30, rgb: [105, 214, 218] },  // 0-30 平台，避免过早升温
+        { at: 0.48, rgb: [158, 209, 189] },  // #9ED1BD 青玉 · 升温
+        { at: 0.70, rgb: [229, 189, 123] },  // #E5BD7B 香槟金 · 紧迫
+        { at: 0.85, rgb: [223, 160, 121] },  // #DFA079 暖琥珀 · 风险增强
+        { at: 1.00, rgb: [216, 104, 112] }   // #D86870 珊瑚赤 · 危险
       ],
       /* 流动高光（沿主光脉推进的冷白短光段） */
       highlightRamp: [
@@ -234,64 +237,76 @@
         { at: 0.55, rgb: [255, 243, 214] },  // #FFF3D6 暖白
         { at: 1.00, rgb: [255, 224, 216] }   // #FFE0D8 浅赤白
       ],
-      /* 单程墨线：墨晕 / 墨肉 / 飞白 / 墨骨 / 芯光 + 生长中的湿墨头 */
+      /* 单程流光：一条纯色、连续、无黑色轮廓的"时间流"。
+         结构自外向内：
+           1 纯色主体（normal 层）——整条主线每个时刻使用统一风险主题色，
+              同色相羽化边缘 + 潮汐波峰带来的内部明暗流动；
+           2 同色柔光（screen 层）——极轻的包边柔光，不越出主体太远；
+           3 连续光芯（screen 层）——更亮一点的同色相细芯，宽度约为主体的 16%；
+           4 推进高光 + 光流丝（screen 层）——贴合路径移动的短亮段；
+           5 终点水墨脉冲——流段到达起点时一圈柔和扩散。
+         颜色：整条主线随 displayRisk 连续染色（青瓷蓝→青玉→香槟金→珊瑚赤），
+               绝不出现黑边 / 深色轮廓 / 平行第二条线。 */
       route: {
-        growSeconds: 5.2,          // 终点 -> 起点 一次写完
-        /* ── 浓墨流光材质（按 2026-10-12 外观规范）─────────────────────────
-           层次自外向内：
-             ① 外围墨晕  很薄的半透明青灰，紧贴边界，不影响地图
-             ② 浓墨主体  #12252D → #03080C 的实心过渡，哑光、不透明、中央饱满
-             ③ 暗青过渡  连接浓墨与内芯
-             ④ 中央光脉  单束连续青蓝，宽度 = 墨体宽 × core.veinRatio（≈6:1）
-             ⑤ 流动高光  沿光脉推进的冷白短光段
-           视觉优先级：浓墨主体 ＞ 连续光脉 ＞ 短时高光 ＞ 边缘墨雾。
-           颜色：墨体不随风险变色（始终深墨黑）；风险只体现在光脉/高光的颜色与流速。 */
-        halo: { width: 13.5, alpha: 0.042, color: '#1B3540', phase: 0.5, undulate: 0.22 },
-        /* 外→内：暗青过渡（薄）→ 浓墨主体（厚实、近黑，占绝大宽度）→ 墨脊
-           2026-10-13：整体再加厚压实，内部灰空被填实（更沉、更像真实浓墨） */
-        passes: [
-          { width: 18.5, alpha: 0.34, color: '#12252D', sharp: 0.15, phase: 0.0, undulate: 0.30 },
-          { width: 17.5, alpha: 0.58, color: '#0C1A22', sharp: 0.30, phase: 0.6, undulate: 0.28 },
-          { width: 16.0, alpha: 0.74, color: '#071216', sharp: 0.50, phase: 1.2, undulate: 0.24 },
-          { width: 14.5, alpha: 0.88, color: '#03080C', sharp: 0.70, phase: 1.8, undulate: 0.20 }
-        ],
-        bone: { width: 10.0, alpha: 0.92, color: '#02060A', phase: 0.3, undulate: 0.15 },  // 实心墨脊（近黑主体）
-        head: { radius: 4.6, alpha: 0.95 },                                               // 墨头
-        /* 飞白：只留 3 根紧贴主线的短毛（更少、更短、更贴边，不飘离主体） */
-        bristle: { strands: 3, width: 1.5, inner: 0.90, outer: 1.06, alpha: 0.18,
-          color: '#08131A', scatter: 0.50, tailKeep: 0.50, phase: 0.2, undulate: 0.18,
-          drift: 0.05 },                                                                  // 毛边图案也朝前缓慢偏移
-        /* 墨体内部的湿墨层次：极缓的浓淡呼吸（只改浓度、不改轮廓） */
-        wet: { alphaBreath: 0.035, period: 21, phases: [0.0, 1.7, 3.4, 5.1], alongLine: 0.06 },
-        /* 中央流光：一条连续主光脉 + 几段带拖尾的推进高光 */
+        growSeconds: 2.6,          // 终点 -> 起点 快速写完，随后进入持续流动
+        /* 纯色主体：连续、居中、边缘平滑羽化（无硬边、无黑边） */
+        body: {
+          width: 13,               // 基准宽度（桌面缩放 ~12）
+          widthMobile: 11,
+          alpha: 0.90,             // 主体中央不透明度
+          taperFloor: 0.42,        // 收笔处最细比例
+          fadeStart: 0.62,         // 收笔起点（t 超过后开始收细）
+          /* 同色相羽化层：由外向内 alpha 递增，边缘自然透明 */
+          layers: [
+            { width: 1.00, alpha: 0.13 },
+            { width: 0.72, alpha: 0.30 },
+            { width: 0.50, alpha: 0.62 },
+            { width: 0.34, alpha: 0.94 }
+          ],
+          /* 同色相明暗呼吸：只改亮度、不改色相 */
+          lightnessBreath: 0.06,
+          breathPeriod: 9
+        },
+        head: { radius: 3.4, alpha: 0.85 },   // 生长中的笔头：同色相柔光，非黑点
+        /* 中央流光：一条连续光芯 + 柔和包边 + 推进高光 + 光流丝 */
         core: {
           enabled: true,
-          veinRatio: 0.12,                        // 主光脉宽 = 墨体宽 × 0.12（≈8:1，细而连续）
-          veinAlpha: 0.48,                        // 主脉不再"整段均匀发亮"，靠流段提神
-          veinDrift: 0.22,                        // 主脉内部明暗沿线条缓慢游走
-          glowRatio: { min: 0.28, max: 0.42 },    // 外层柔光 = 墨体宽 × 0.28~0.42
-          glowAlpha: 0.14,
-          hold: 0.10,                             // 两端淡出比例
-          /* 墨体与光脉之间的深青过渡层（画在墨层上，让光像从墨里透出） */
-          transition: { widthRatio: 0.26, alpha: 0.60, color: '#123240' },
-          /* 推进的高亮流段：前端尖而亮、尾部柔而长（明显拖尾） */
-          highlight: { count: 3, speed: 0.13, speedRisk: 1.9, width: 0.95, alpha: 0.98,
-            headLength: 0.014, tailLength: 0.115, spread: 0.34 },
-          /* 弯道：流光轻微压缩并增亮，出弯重新舒展 */
+          veinRatio: 0.16,          // 光芯约占可见主体宽度 16%
+          veinAlpha: 0.85,
+          veinLighten: 0.24,        // 光芯比主体更亮（同色相，OKLab 提亮）
+          veinDrift: 0.22,
+          glowRatio: { min: 0.55, max: 0.92 },
+          glowAlpha: 0.30,
+          hold: 0.08,
+          transition: null,
+          highlight: { count: 3, speed: 0.12, speedRisk: 2.0, width: 0.9, alpha: 0.98,
+            headLength: 0.012, tailLength: 0.10, tailRisk: 0.5, spread: 0.34 },
+          filament: { count: 3, widthRatio: 0.22, alpha: 0.32, speed: 0.09,
+            spreadRatio: 0.30, hold: 0.16 },
+          pulse: { enabled: true, radius: [5, 30], alpha: 0.30, life: 1.5 },
           corner: { compress: 0.40, brighten: 0.55 },
           drift: 0.35
         },
-        /* 危险态：边缘可出现极少量赤墨渗出 */
-        bleed: { from: 72, max: 0.12, color: '#E66A5A' },
-        /* 风险调制：仅轻微加宽/加浓，墨体不能因此变成"压力管" */
-        risk: {
-          width: { min: 0.94, max: 1.12 },
-          alpha: { min: 0.94, max: 1.04 }
+        /* 潮汐波峰：线内部若干平滑推进的局部能量峰（本次核心创新动效） */
+        wave: {
+          count: 3,
+          baseSpeed: 0.09,         // 风险 0 时每秒推进的路线长度比例
+          speedRisk: 2.6,          // 风险 100 时额外速度增益（高潮汐更急）
+          headSharp: 0.045,        // 波峰前端集中度（越小越尖）
+          tailLong: 0.30,          // 波峰后端衰减长度（越长拖尾越绵长）
+          brightness: 0.34,        // 波峰处最大同色相亮度提升
+          widthBoost: 0.20,        // 波峰处最大线宽提升
+          alphaBoost: 0.12         // 波峰处最大不透明度提升
         },
-        /* 风险变化沿墨线传播（墨头先响应、墨尾滞后），单位秒 */
-        propagate: { rise: 1.6, fall: 3.4 },
+        /* 风险调制：仅轻微加宽，主线不能因此变成"压力管" */
+        risk: {
+          width: { min: 0.94, max: 1.14 },
+          alpha: { min: 0.92, max: 1.0 }
+        },
+        /* 风险颜色平滑：displayRisk 以指数平滑追上 targetRisk，单位秒 */
+        propagate: { rise: 0.35, fall: 0.55 },
         /* 极微弱呼吸（整条线不许膨胀收缩） */
-        flow: { amplitude: 0.035, period: 18 }
+        flow: { amplitude: 0.05, period: 17 }
       },
       /* 全国墨潮：潮岸缓慢扩散、等值线、城市墨源半径 */
       tide: {
