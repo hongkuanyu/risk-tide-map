@@ -111,27 +111,47 @@
     </header>
 
     <section class="search-row" id="search-row" aria-label="起终点搜索">
-      <div class="search-field">
-        <span class="search-dot search-dot-origin" aria-hidden="true"></span>
-        <div class="search-input-wrap">
-          <label for="origin-input">起点</label>
-          <input id="origin-input" type="text" placeholder="输入起点" autocomplete="off" spellcheck="false">
-        </div>
+      <div class="search-heading">
+        <strong>设置出行路线</strong>
+        <span>起点与终点均可点击修改</span>
       </div>
-      <button class="search-swap" id="search-swap" type="button" aria-label="交换起点和终点">
-        <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M7 7h11l-3-3M17 17H6l3 3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      </button>
-      <div class="search-field">
-        <span class="search-dot search-dot-dest" aria-hidden="true"></span>
-        <div class="search-input-wrap">
-          <label for="dest-input">终点</label>
-          <input id="dest-input" type="text" placeholder="输入目的地" autocomplete="off" spellcheck="false">
+      <div class="search-fields">
+        <div class="search-field" data-role="origin">
+          <span class="search-dot search-dot-origin" aria-hidden="true"></span>
+          <div class="search-input-wrap">
+            <label for="origin-input">出发地 · 起点</label>
+            <div class="search-input-line">
+              <input id="origin-input" type="text" placeholder="输入起点" autocomplete="off" spellcheck="false">
+              <button class="search-clear" type="button" data-clear="origin" aria-label="清空起点" hidden>×</button>
+            </div>
+          </div>
+          <span class="search-edit-hint" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="13" height="13"><path d="M4 20h4L19 9l-4-4L4 16v4z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+            修改
+          </span>
         </div>
+        <button class="search-swap" id="search-swap" type="button" aria-label="交换起点和终点">
+          <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M7 7h11l-3-3M17 17H6l3 3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <div class="search-field" data-role="dest">
+          <span class="search-dot search-dot-dest" aria-hidden="true"></span>
+          <div class="search-input-wrap">
+            <label for="dest-input">目的地 · 终点</label>
+            <div class="search-input-line">
+              <input id="dest-input" type="text" placeholder="输入目的地" autocomplete="off" spellcheck="false">
+              <button class="search-clear" type="button" data-clear="dest" aria-label="清空终点" hidden>×</button>
+            </div>
+          </div>
+          <span class="search-edit-hint" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="13" height="13"><path d="M4 20h4L19 9l-4-4L4 16v4z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+            修改
+          </span>
+        </div>
+        <button class="search-locate" id="search-locate" type="button">
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+          使用当前位置
+        </button>
       </div>
-      <button class="search-locate" id="search-locate" type="button">
-        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
-        使用当前位置
-      </button>
       <p class="search-hint" id="search-hint" role="status" aria-live="polite"></p>
     </section>
     <main class="stage">

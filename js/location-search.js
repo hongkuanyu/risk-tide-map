@@ -106,6 +106,7 @@
       if (!input) return;
       input.addEventListener('input', function () {
         self.role = role;
+        self.syncClear(role);
         var instance = self.autoMap && self.autoMap[role];
         if (instance) instance.search(input.value);
       });
@@ -118,11 +119,40 @@
       input.addEventListener('focus', function () {
         self.role = role;
         self.showEndpoint();
+        self.syncClear(role);
       });
+      input.addEventListener('blur', function () {
+        /* 用户清空后未确认：恢复已确认的有效地址，不让空文字冒充坐标 */
+        if (!input.value) { self.role = role; self.showEndpoint(); }
+        self.syncClear(role);
+      });
+      /* 点击卡片任意非按钮区域直接聚焦输入框，明显提示可编辑 */
+      var card = input.closest ? input.closest('.search-field') : null;
+      if (card) {
+        card.addEventListener('click', function (event) {
+          if (event.target && event.target.closest && event.target.closest('button')) return;
+          input.focus();
+        });
+      }
+      var clearButton = document.querySelector('[data-clear="' + role + '"]');
+      if (clearButton) {
+        clearButton.addEventListener('click', function () {
+          input.value = '';
+          input.focus();
+          self.syncClear(role);
+          self.setHint('输入新地址后按回车，或从候选列表中选择。', '');
+        });
+      }
     });
     if (this.swapButton) this.swapButton.addEventListener('click', function () { self.swap(); });
     if (this.locateButton) this.locateButton.addEventListener('click', function () { self.useCurrentLocation(); });
 
+  };
+
+  LocationSearch.prototype.syncClear = function (role) {
+    var input = role === 'origin' ? this.originInput : this.destInput;
+    var btn = document.querySelector('[data-clear="' + role + '"]');
+    if (btn) btn.hidden = !(input && input.value);
   };
 
   LocationSearch.prototype.showEndpoint = function () {
@@ -152,6 +182,7 @@
       verified: false
     });
     if (input) input.value = name;
+    this.syncClear(role === 'campus' ? 'origin' : 'dest');
     this.setHint('已选择「' + name + '」，正在重新规划路线…', 'ok');
     this.onSelect(role, endpoint, meta && meta.city);
   };
@@ -169,6 +200,8 @@
     station.shortName = destName;
     if (this.originInput) this.originInput.value = campus.shortName || campus.name;
     if (this.destInput) this.destInput.value = station.shortName || station.name;
+    this.syncClear('origin');
+    this.syncClear('dest');
     this.onSelect('both', { campus: campus, station: station }, campus.city || station.city);
   };
 

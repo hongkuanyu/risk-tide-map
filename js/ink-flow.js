@@ -139,6 +139,8 @@
       this.riskTarget = 0;
       this.routeDirty = true;
       this.progress = 0;
+      this.bodyProgress = 0;
+      this.depositProgress = 0;
       this.totalLength = 0;
       this.degenerate = false;
       this.running = false;
@@ -226,6 +228,8 @@
       this.reason = info.reason || '';
       this.routeDirty = true;
       this.progress = (this.reducedMotion || this.kind !== 'road') ? 1 : 0;
+      this.bodyProgress = this.progress;
+      this.depositProgress = this.progress;
       this.writeElapsed = 0;
       this.hover = 0;
       this.hoverTarget = 0;
@@ -410,7 +414,15 @@
 
     bodyWidth() {
       const body = (config.ink && config.ink.route && config.ink.route.body) || {};
-      return body.width === undefined ? 13 : body.width;
+      return body.width === undefined ? 11 : body.width;
+    }
+
+    /* 出现动画时长：低风险约 7s、高风险约 4.6s，随 displayRisk 连续插值 */
+    growDuration() {
+      const grow = (config.ink && config.ink.route && config.ink.route.grow) || {};
+      const low = grow.lowRisk === undefined ? 7.0 : grow.lowRisk;
+      const high = grow.highRisk === undefined ? 4.6 : grow.highRisk;
+      return low + (high - low) * clamp(this.displayRisk / 100, 0, 1);
     }
 
     /* 潮汐波峰能量：沿线位置 t（0=终点，1=起点）叠加若干推进波峰的亮度/宽度包络。
@@ -481,18 +493,16 @@
     }
 
     /* 同色相明暗（波峰亮度 + 缓慢呼吸），正数提亮、负数压暗 */
-    bodyLift(t, curve) {
+    bodyLift(t, curve, shadeLift) {
       const route = (config.ink && config.ink.route) || {};
-      const body = route.body || {};
       const wave = route.wave || {};
+      const base = shadeLift === undefined ? 0 : shadeLift;
       const w = this.waveEnergy(t);
       const c = curve === undefined ? 0 : curve;
       const corner = wave.corner || { compress: 0.15, brighten: 0.30 };
       const cornerBrighten = (corner.brighten === undefined ? 0.30 : corner.brighten) * c * w;
-      const breathAmp = body.lightnessBreath === undefined ? 0.06 : body.lightnessBreath;
-      const period = Math.max(4, body.breathPeriod === undefined ? 9 : body.breathPeriod);
-      const breath = Math.sin(t * 6.283 - this.elapsed * (Math.PI * 2) / period) * breathAmp;
-      return clamp((wave.brightness === undefined ? 0.30 : wave.brightness) * w + breath + cornerBrighten, -0.6, 0.95);
+      const breath = Math.sin(t * 6.283 - this.elapsed * (Math.PI * 2) / 11) * 0.05;
+      return clamp(base + (wave.brightness === undefined ? 0.16 : wave.brightness) * w + breath + cornerBrighten, -0.65, 0.95);
     }
 
     /* 每帧构建一次同色相明暗查找表：主体颜色全程统一，只有亮度随波峰/呼吸变化 */
@@ -507,9 +517,9 @@
       this._colourLut = lut;
     }
 
-    colourAt(t, curve) {
+    colourAt(t, curve, shadeLift) {
       if (!this._colourLut) this.buildColourLut();
-      const lift = this.bodyLift(t, curve);
+      const lift = this.bodyLift(t, curve, shadeLift);
       const idx = clamp(Math.round((lift + 0.6) / 1.55 * 64), 0, 64);
       return this._colourLut[idx];
     }
@@ -622,24 +632,32 @@
       ctx.globalAlpha = 1;
     }
 
-    /* 纯色主体：同色相羽化层，每层颜色一致、宽度递减、alpha 递增。
-       波峰让主体局部更亮、更宽，经过后恢复常态。 */
-    drawBody(limit) {
+    /* 一笔三染：浅墨先行（最宽最浅）、主墨浸润（居中）、浓墨沉积（最窄最深）。
+       三层同路径、同心，limit 互有相位差，远看仍是一条完整墨线。 */
+    drawBody() {
       const route = (config.ink && config.ink.route) || {};
+      const wash = route.wash || {};
       const body = route.body || {};
-      const layers = (body.layers && body.layers.length) ? body.layers : [{ width: 1, alpha: 1 }];
-      const baseWidth = this.bodyWidth();
-      for (let i = 0; i < layers.length; i += 1) {
-        const layer = layers[i];
-        if (!layer || !layer.width) continue;
-        this.drawRibbon(limit, {
-          width: baseWidth * (layer.width || 1),
-          alpha: (body.alpha === undefined ? 0.9 : body.alpha) * (layer.alpha === undefined ? 0.5 : layer.alpha),
-          sharp: 0.35 + 0.22 * i,
-          phase: i * 1.7,
-          undulate: 0.05,
-          wet: false
-        });
+      const deposit = route.deposit || {};
+      const n = Math.max(1, this.points.length - 1);
+      const mobile = this.width < 620;
+      const washW = mobile ? (wash.widthMobile === undefined ? 13 : wash.widthMobile) : (wash.width === undefined ? 18 : wash.width);
+      const bodyW = mobile ? (body.widthMobile === undefined ? 8 : body.widthMobile) : (body.width === undefined ? 11 : body.width);
+      const depW = mobile ? (deposit.widthMobile === undefined ? 3 : deposit.widthMobile) : (deposit.width === undefined ? 4 : deposit.width);
+      if (this.progress > 0.001) {
+        this.drawRibbon(this.progress * n, { width: washW, alpha: wash.alpha === undefined ? 0.20 : wash.alpha,
+          shadeLift: wash.shadeLift === undefined ? 0.34 : wash.shadeLift, soft: wash.soft === undefined ? 0.10 : wash.soft,
+          undulate: 0.05, phase: 0.0 });
+      }
+      if (this.bodyProgress > 0.001) {
+        this.drawRibbon(this.bodyProgress * n, { width: bodyW, alpha: body.alpha === undefined ? 0.72 : body.alpha,
+          shadeLift: body.shadeLift === undefined ? 0 : body.shadeLift, soft: body.soft === undefined ? 0.06 : body.soft,
+          undulate: 0.04, phase: 1.3 });
+      }
+      if (this.depositProgress > 0.001) {
+        this.drawRibbon(this.depositProgress * n, { width: depW, alpha: deposit.alpha === undefined ? 0.92 : deposit.alpha,
+          shadeLift: deposit.shadeLift === undefined ? -0.24 : deposit.shadeLift, soft: deposit.soft === undefined ? 0.05 : deposit.soft,
+          undulate: 0.03, phase: 2.6 });
       }
     }
 
@@ -655,6 +673,8 @@
       const riskCfg = route.risk || {};
       const ph = spec.phase === undefined ? 0 : spec.phase;
       const und = spec.undulate === undefined ? 0 : spec.undulate;
+      const shadeLift = spec.shadeLift === undefined ? 0 : spec.shadeLift;
+      const soft = spec.soft === undefined ? 0.06 : spec.soft;
       const rn = clamp(this.displayRisk / 100, 0, 1);
       const wMin = riskCfg.width && riskCfg.width.min !== undefined ? riskCfg.width.min : 0.94;
       const wMax = riskCfg.width && riskCfg.width.max !== undefined ? riskCfg.width.max : 1.14;
@@ -727,6 +747,8 @@
           + Math.sin(t * 41.3 + 2.4) * 0.010;
         const c = this.curveAt(i);
         const w = this.waveEnergy(t);
+        const tipT = Math.min(1, limit / Math.max(1, total - 1));
+        const headFade = soft <= 0 ? 1 : (0.18 + 0.82 * clamp(smoothstep(0, soft, Math.max(0, tipT - t)), 0, 1));
         const waveCorner = wave.corner || { compress: 0.15, brighten: 0.30 };
         const waveCompress = (waveCorner.compress === undefined ? 0.15 : waveCorner.compress) * c;
         const waveW = 1 + waveBoost * w * (1 - waveCompress);
@@ -739,8 +761,8 @@
         if (half < 0) half = 0;
         left[i] = { x: vis[i].x + nx * half, y: vis[i].y + ny * half };
         right[i] = { x: vis[i].x + nx * -half, y: vis[i].y + ny * -half };
-        alpha[i] = clamp(spec.alpha * alphaRisk * (1 + alphaBoost * w) * this.fadeIn, 0, 1);
-        colour[i] = this.colourAt(t, c);
+        alpha[i] = clamp(spec.alpha * alphaRisk * (1 + alphaBoost * w) * this.fadeIn * headFade, 0, 1);
+        colour[i] = this.colourAt(t, c, shadeLift);
         if (i === 0) { startHalf = half; startAlpha = alpha[0]; startColour = colour[0]; }
       }
 
@@ -773,193 +795,12 @@
     }
 
     /* 中央流光：同色柔光 + 连续光芯 + 光流丝 + 推进高光（screen 混合） */
-    drawCore(limit) {
-      const route = (config.ink && config.ink.route) || {};
-      const cfg = route.core;
-      if (!cfg || cfg.enabled === false || !this.glowCtx) return;
-      const self = this;
-      const body = this.bodyWidth();
-      const risk01 = clamp(this.displayRisk / 100, 0, 1);
-      const hold = cfg.hold === undefined ? 0.08 : cfg.hold;
-      const envelope = function (t) {
-        return smoothstep(0, hold, t) * (1 - smoothstep(1 - hold, 1, t));
-      };
-      const corner = cfg.corner || {};
-      const compress = corner.compress === undefined ? 0.40 : corner.compress;
-      const brighten = corner.brighten === undefined ? 0.55 : corner.brighten;
-      const curveOf = function (i) { return self.curveAt(i); };
-      const time = this.reducedMotion ? 0 : this.elapsed;
-      const veinDrift = time * (cfg.veinDrift === undefined ? 0.22 : cfg.veinDrift);
-      const veinWidth = Math.max(1.2, body * (cfg.veinRatio === undefined ? 0.16 : cfg.veinRatio));
-      const glowRange = cfg.glowRatio || { min: 0.55, max: 0.92 };
-      const glowWidth = body * (glowRange.min + ((glowRange.max || glowRange.min) - glowRange.min) * risk01);
+    /* 已按新水墨契约移除 screen 发光层：三层墨线全部用 normal 混合，
+       避免白色光芯 / bloom / 荧光描边。保留方法名供回退与静态校验。 */
+    drawCore() { /* no-op：发光层已禁用 */ }
 
-      /* 同色柔光：中心亮、两侧渐隐，宽度不越出主体太远 */
-      this.tracePass(limit, function (scale, risk, i) {
-        const e = envelope(scale.t);
-        if (e <= 0.002) return { offset: 0, width: 0, alpha: 0 };
-        const c = curveOf(i);
-        const w = self.waveEnergy(scale.t);
-        return {
-          offset: 0,
-          width: glowWidth * e * (0.9 + 0.1 * scale.taper) * (1 - compress * 0.25 * c),
-          alpha: (cfg.glowAlpha === undefined ? 0.30 : cfg.glowAlpha) * e
-            * (0.75 + 0.55 * risk01) * (0.85 + 0.15 * scale.breathe) * (1 + brighten * 0.25 * c) * (1 + 0.25 * w)
-        };
-      }, 'core', this.glowCtx, cfg.phase, cfg.undulate);
-
-      /* 连续光芯：始终存在，极轻明暗与宽度呼吸，波峰经过时更亮 */
-      this.tracePass(limit, function (scale, risk, i) {
-        const e = envelope(scale.t);
-        if (e <= 0.002) return { offset: 0, width: 0, alpha: 0 };
-        const c = curveOf(i);
-        const w = self.waveEnergy(scale.t);
-        const breeze = 0.94 + 0.06 * Math.sin(scale.t * 3.1 - veinDrift);
-        return {
-          offset: 0,
-          width: veinWidth * e * (0.92 + 0.08 * scale.taper) * breeze * (1 - compress * c) * (1 + 0.18 * w),
-          alpha: clamp((cfg.veinAlpha === undefined ? 0.85 : cfg.veinAlpha) * e * breeze
-            * (1 + brighten * 0.40 * c) * (1 + 0.30 * w), 0, 1)
-        };
-      }, 'vein', this.glowCtx, cfg.phase, cfg.undulate);
-
-      /* 光流丝：贴着光芯的细光，速度略有差异 */
-      const fl = cfg.filament || {};
-      const flCount = Math.max(0, Math.round(fl.count === undefined ? 3 : fl.count));
-      const flWidth = Math.max(0.4, veinWidth * (fl.widthRatio === undefined ? 0.22 : fl.widthRatio));
-      const flHold = fl.hold === undefined ? 0.16 : fl.hold;
-      const flSpeed = this.waveSpeed() * (fl.speed === undefined ? 1.25 : fl.speed);
-      const flSpread = (fl.spreadRatio === undefined ? 0.28 : fl.spreadRatio) * veinWidth * 0.5;
-      const flTravel = this.reducedMotion ? 0 : this.elapsed * flSpeed;
-      for (let k = 0; k < flCount; k += 1) {
-        const lane = (k - (flCount - 1) / 2) * (k % 2 === 0 ? 1 : -1) * 0.6;
-        const phaseOffset = k * 1.9;
-        this.tracePass(limit, function (scale, risk, i) {
-          const e = smoothstep(0, flHold, scale.t) * (1 - smoothstep(1 - flHold, 1, scale.t));
-          if (e <= 0.002) return { offset: 0, width: 0, alpha: 0 };
-          const head = ((k / flCount + flTravel + phaseOffset * 0.05) % 1 + 1) % 1;
-          let d = scale.t - head;
-          if (d > 0.5) d -= 1;
-          if (d < -0.5) d += 1;
-          const win = 1 - smoothstep(0, 0.30, Math.abs(d));
-          if (win <= 0.02) return { offset: 0, width: 0, alpha: 0 };
-          return {
-            offset: lane * e,
-            width: flWidth * e * (0.8 + 0.4 * win),
-            alpha: (fl.alpha === undefined ? 0.28 : fl.alpha) * win * e * (0.9 + 0.1 * scale.breathe)
-          };
-        }, 'highlight', this.glowCtx, cfg.phase, cfg.undulate);
-      }
-
-      /* 推进高光流段：前端尖亮、尾部柔长，拖尾随风险变长，弯道压缩增亮 */
-      const hl = cfg.highlight || {};
-      const count = Math.max(0, Math.round(hl.count === undefined ? 3 : hl.count));
-      if (!count) return;
-      const headLen = Math.max(0.004, hl.headLength === undefined ? 0.016 : hl.headLength);
-      const tailLen = Math.max(headLen, (hl.tailLength === undefined ? 0.16 : hl.tailLength)
-        * (1 + (hl.tailRisk === undefined ? 0.4 : hl.tailRisk) * risk01));
-      const speed = this.waveSpeed() * (hl.speed === undefined ? 1.5 : hl.speed);
-      const travel = this.reducedMotion ? 0 : this.elapsed * speed;
-      if (!this.pulseHeads) this.pulseHeads = [];
-      for (let k = 0; k < count; k += 1) {
-        const base = (k / count + (k === 1 ? 0.37 : k === 2 ? 0.68 : 0)) % 1;
-        const head = ((base + travel) % 1 + 1) % 1;
-        const prev = this.pulseHeads[k];
-        if (!this.reducedMotion && prev !== undefined && head < prev - 0.25) {
-          const pulses = cfg.pulse || {};
-          if (pulses.enabled !== false && this.pulses.length < 3) {
-            const last = this.points[this.points.length - 1];
-            this.pulses.push({
-              t: 0,
-              x: last.x,
-              y: last.y,
-              risk: this.displayRisk,
-              life: pulses.life === undefined ? 1.5 : pulses.life,
-              radius: pulses.radius || [5, 30],
-              alpha: pulses.alpha === undefined ? 0.30 : pulses.alpha
-            });
-          }
-        }
-        this.pulseHeads[k] = head;
-        this.tracePass(limit, function (scale, risk, i) {
-          const e = envelope(scale.t);
-          if (e <= 0.002) return { offset: 0, width: 0, alpha: 0 };
-          let d = scale.t - head;
-          if (d > 0.5) d -= 1;
-          if (d < -0.5) d += 1;
-          const front = d >= 0 ? 1 - smoothstep(0, headLen, d) : 1;
-          const tail = d <= 0 ? Math.exp(d / tailLen) : 1;
-          const win = front * tail;
-          if (win <= 0.012) return { offset: 0, width: 0, alpha: 0 };
-          const tailFade = d <= 0 ? clamp(-d / tailLen, 0, 1) : 0;
-          const c = curveOf(i);
-          return {
-            offset: 0,
-            width: (hl.width === undefined ? 0.85 : hl.width) * (0.55 + 2.4 * tailFade)
-              * (1 - compress * 0.2 * c) + veinWidth * 0.18,
-            alpha: clamp((hl.alpha === undefined ? 0.88 : hl.alpha) * win * e
-              * (1 + brighten * 0.30 * c), 0, 1)
-          };
-        }, 'highlight', this.glowCtx, cfg.phase, cfg.undulate);
-      }
-    }
-
-    drawPulses() {
-      const ctx = this.glowCtx;
-      if (!ctx || !this.pulses || !this.pulses.length) return;
-      if (this.reducedMotion) { this.pulses.length = 0; return; }
-      const time = this.elapsed;
-      for (let i = this.pulses.length - 1; i >= 0; i -= 1) {
-        const pulse = this.pulses[i];
-        const age = time - pulse.t;
-        const life = Math.max(0.2, pulse.life || 1.5);
-        if (age < 0 || age > life) { this.pulses.splice(i, 1); continue; }
-        const k = age / life;
-        const radius = pulse.radius[0] + (pulse.radius[1] - pulse.radius[0]) * k;
-        const fade = (1 - k) * (1 - k) * (pulse.alpha || 0.30);
-        const ink = rampRgb(config.ink && config.ink.coreRamp, pulse.risk);
-        const grad = ctx.createRadialGradient(pulse.x, pulse.y, radius * 0.35, pulse.x, pulse.y, radius);
-        grad.addColorStop(0, 'rgba(' + ink[0] + ',' + ink[1] + ',' + ink[2] + ',0)');
-        grad.addColorStop(0.72, 'rgba(' + ink[0] + ',' + ink[1] + ',' + ink[2] + ',' + (fade * 0.85).toFixed(3) + ')');
-        grad.addColorStop(1, 'rgba(' + ink[0] + ',' + ink[1] + ',' + ink[2] + ',0)');
-        ctx.fillStyle = grad;
-        ctx.beginPath();
-        ctx.arc(pulse.x, pulse.y, radius, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-
-    /* 生长中的笔头：同色相柔光，不是黑点 */
-    drawHead(progress) {
-      if (progress >= 1 || this.points.length < 2) return;
-      const index = Math.min(this.points.length - 2, Math.floor(progress * (this.points.length - 1)));
-      const t = progress * (this.points.length - 1) - index;
-      const a = this.points[index], b = this.points[index + 1];
-      const x = a.x + (b.x - a.x) * t;
-      const y = a.y + (b.y - a.y) * t;
-      const base = rampRgb(config.ink && config.ink.coreRamp, this.displayRisk);
-      const bright = oklabLift(base, 0.35);
-      const cfg = (config.ink && config.ink.route && config.ink.route.head) || {};
-      const radius = cfg.radius === undefined ? 3.4 : cfg.radius;
-      const alpha = cfg.alpha === undefined ? 0.85 : cfg.alpha;
-      const ctx = this.ctx;
-      const halo = ctx.createRadialGradient(x, y, 0, x, y, radius * 3.4);
-      halo.addColorStop(0, 'rgba(' + bright[0] + ',' + bright[1] + ',' + bright[2] + ',' + (alpha * 0.45).toFixed(3) + ')');
-      halo.addColorStop(0.55, 'rgba(' + base[0] + ',' + base[1] + ',' + base[2] + ',' + (alpha * 0.20).toFixed(3) + ')');
-      halo.addColorStop(1, 'rgba(' + base[0] + ',' + base[1] + ',' + base[2] + ',0)');
-      ctx.fillStyle = halo;
-      ctx.beginPath();
-      ctx.arc(x, y, radius * 3.4, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalAlpha = alpha;
-      ctx.fillStyle = rgbStr(bright);
-      ctx.beginPath();
-      ctx.arc(x, y, radius, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalAlpha = 1;
-    }
-
-    /* 非真实道路路线：一条克制的虚线示意，明确区别于真实流光。 */
+    drawPulses() { /* no-op：终点脉冲已随发光层移除 */ }
+    drawHead() { /* no-op：笔头由浅墨层的柔和前缘替代 */ }
     drawPreview() {
       const ctx = this.ctx;
       const points = this.points;
@@ -995,11 +836,7 @@
       if (this.points.length < 2) return;
       if (this.kind !== 'road') { this.drawPreview(); return; }
       this.buildColourLut();
-      const limit = (this.points.length - 1) * this.progress;
-      this.drawBody(limit);
-      this.drawCore(limit);
-      this.drawPulses();
-      if (this.progress < 1) this.drawHead(this.progress);
+      this.drawBody();
     }
 
     frame(timestamp) {
@@ -1017,9 +854,14 @@
       this.advanceRisk(dt);
       this.advanceWaves(dt);
       if (!this.reducedMotion && this.kind === 'road' && this.progress < 1) {
-        const grow = (config.ink && config.ink.route && config.ink.route.growSeconds) || 2.6;
-        this.writeElapsed += writeDt;
-        this.progress = Math.min(1, this.writeElapsed / grow);
+        const grow = this.growDuration();
+        const step = writeDt / Math.max(0.5, grow);
+        this.progress = Math.min(1, this.progress + step);
+        const g = (config.ink && config.ink.route && config.ink.route.grow) || {};
+        const bodyOffset = g.bodyOffset === undefined ? 0.05 : g.bodyOffset;
+        const depositOffset = g.depositOffset === undefined ? 0.13 : g.depositOffset;
+        this.bodyProgress = Math.min(1, Math.max(0, (this.progress - bodyOffset) / Math.max(1e-3, 1 - bodyOffset)));
+        this.depositProgress = Math.min(1, Math.max(0, (this.progress - depositOffset) / Math.max(1e-3, 1 - depositOffset)));
       }
       this.draw();
       /* 真实路线持续流动：潮汐波峰/光流丝/推进高光永远在动，保持满帧。 */

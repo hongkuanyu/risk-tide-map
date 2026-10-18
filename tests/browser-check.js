@@ -372,8 +372,8 @@ async function scenarioRealVsHint(page) {
     boot.legend.indexOf('全程时间余量') >= 0 && boot.legend.indexOf('非实时路况') >= 0, boot.legend);
   const realInk = await page.evaluate(`window.__t.inkStats(8)`);
   const realGlow = await page.evaluate(`window.__t.glowStats()`);
-  check('真实路线：芯光层有发光像素（screen 混合的独立画布）',
-    realGlow.exists && realGlow.count > 200 && realGlow.maxAlpha > 60, JSON.stringify(realGlow));
+  check('真实路线：无荧光发光层（screen 画布为空，水墨全部走 normal 混合）',
+    realGlow.exists && realGlow.count === 0, JSON.stringify(realGlow));
   const realWidth = await page.evaluate(`window.__t.widthAt(Math.floor(window.RiskTideApp.inkFlow.points.length * 0.2), 8)`);
   await page.evaluate(`window.__t.setMode('bus')`);
   await sleep(900);
@@ -610,16 +610,16 @@ async function scenarioFrameRate(page) {
     f.stop();
     return { stepMs: ${stepMs}, frames: frames,
       seconds: Math.round(frames * ${stepMs} / 10) / 100,
-      grow: window.RiskTideConfig.ink.route.growSeconds };
+      grow: window.RiskTideConfig.ink.route.grow.lowRisk };
   })()`;
   const at60 = await page.evaluate(drive(16.7));
   const at10 = await page.evaluate(drive(100));
   const at4 = await page.evaluate(drive(250));
-  check('写线时长按真实时间：60fps 下 ≈ growSeconds', approx(at60.seconds, at60.grow, at60.grow * 0.12),
+  check('写线时长按真实时间：60fps 下 ≈ grow.lowRisk', approx(at60.seconds, at60.grow, at60.grow * 0.12),
     JSON.stringify(at60));
-  check('写线时长按真实时间：10fps 下仍 ≈ growSeconds', approx(at10.seconds, at10.grow, at10.grow * 0.12),
+  check('写线时长按真实时间：10fps 下仍 ≈ grow.lowRisk', approx(at10.seconds, at10.grow, at10.grow * 0.12),
     JSON.stringify(at10));
-  check('写线时长按真实时间：4fps 下仍 ≈ growSeconds', approx(at4.seconds, at4.grow, at4.grow * 0.12),
+  check('写线时长按真实时间：4fps 下仍 ≈ grow.lowRisk', approx(at4.seconds, at4.grow, at4.grow * 0.12),
     JSON.stringify(at4));
   const monotonic = await page.evaluate(`(() => {
     const f = window.RiskTideApp.inkFlow;
@@ -1264,118 +1264,66 @@ async function scenarioFlow(page) {
   await page.gotoRoute(BASE + '/?route=1&osm=1', 3400);
   await page.evaluate(`window.__t.setMode('taxi')`);
   await sleep(1400);
-  /* 写线结束后再看静止态：等动画走完 */
-  /* headless 下新建的标签页可能是后台页（document.hidden = true），
-     不置前/不强制可见的话动画根本不会跑 —— 这里两件都做，保证测的是渲染本身。 */
   await page.browser.send('Page.bringToFront', {}, page.sessionId);
-  /* 确定性方向断言：把流动高光临时收成 1 段、速度调成潮汐速度的 1.8 倍，
-     这样它在采样区间内不会回绕，位置 t 必须单调递增（终点 → 起点）。 */
-  await page.evaluate(`(() => {
-    const core = window.RiskTideConfig.ink.route.core;
-    core.veinAlpha = 0.12;          // 临时压暗主脉：这样"亮像素"只可能是高光
-    core.filament.count = 0;
-    const cfg = core.highlight;
-    cfg.count = 1;
-    cfg.speed = 1.8;
 
-    return 'ok';
+  /* 先强制完整沉积，确保路线已就绪；再回放到一次全新的三染生长动画 */
+  await page.evaluate(`(() => {
+    const f = window.RiskTideApp.inkFlow;
+    f.reducedMotion = true; f.progress = 1; f.bodyProgress = 1; f.depositProgress = 1; f.draw();
+    return f.points.length;
   })()`);
   await page.evaluate(`(() => {
     const f = window.RiskTideApp.inkFlow;
-    f.setVisible(true);
-    f.reducedMotion = false;
-    f.progress = 1;
-    f.elapsed = 0;
-    f.lastTime = 0;
-    f.start();
-    return 'ok';
+    f.setVisible(true); f.reducedMotion = false;
+    f.riskTarget = 0; f.displayRisk = 0;
+    f.progress = 0; f.bodyProgress = 0; f.depositProgress = 0;
+    f.elapsed = 0; f.lastTime = 0; f.wavePhases = [0.0, 0.41, 0.73];
+    f.start(); return 'ok';
   })()`);
-  await sleep(2500);
 
-  const sample = async function () {
-    return page.evaluate(`(() => {
+  const growth = [];
+  for (let i = 0; i < 9; i += 1) {
+    growth.push(await page.evaluate(`(() => {
       const f = window.RiskTideApp.inkFlow;
-      const idx = Math.max(4, Math.floor(f.points.length * 0.45));
-      const soft = window.__t.widthAt(idx, 8);
-      const stats = window.__t.inkStats(8);
-      const glow = window.__t.glowStats(8);          // 主光脉 + 柔光：应当持续存在
-      const bright = window.__t.brightTrack(150);    // 冷白高光（主脉已压暗，150 只圈到高光）
-      const box = window.__t.centerBox();
-      const cv = document.getElementById('silk-canvas');
-      const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
-      const p = f.points[idx];
-      const px = Math.round(p.x * (cv.width / cv.getBoundingClientRect().width));
-      const py = Math.round(p.y * (cv.height / cv.getBoundingClientRect().height));
-      const oi = (py * cv.width + px) * 4;
-      const bodyRgb = [d[oi], d[oi + 1], d[oi + 2]];
-      return { soft: soft, pixels: stats.count, meanAlpha: stats.meanAlpha, glow: glow.count, bright: bright.count, brightT: bright.t,
-        bodyRgb: bodyRgb,
-        box: [box.l, box.t, box.r, box.b], elapsed: Math.round(f.elapsed * 10) / 10 };
-    })()`);
-  };
-  const samples = [];
-  for (let i = 0; i < 4; i += 1) {
-    samples.push(await sample());
-    await sleep(1100);
+      return { p: Math.round(f.progress * 1000) / 1000,
+        b: Math.round((f.bodyProgress || 0) * 1000) / 1000,
+        d: Math.round((f.depositProgress || 0) * 1000) / 1000,
+        wave: Math.round(f.wavePhases[0] * 1000) / 1000,
+        ink: window.__t.inkStats(8).count };
+    })()`));
+    await sleep(950);
   }
-  const widths = samples.map((s) => s.soft);
-  const pixels = samples.map((s) => s.pixels);
-  const spread = (Math.max.apply(null, widths) - Math.min.apply(null, widths)) / Math.max(1, Math.max.apply(null, widths));
-  const pixelSpread = (Math.max.apply(null, pixels) - Math.min.apply(null, pixels)) / Math.max(1, Math.max.apply(null, pixels));
-  const sameBox = samples.every((s) => s.box.join(',') === samples[0].box.join(','));
+  const monotonic = growth.every((g, i) => i === 0 || g.p >= growth[i - 1].p - 1e-6);
+  const layering = growth.every((g) => g.p >= g.b - 1e-6 && g.b >= g.d - 1e-6);
+  const reached = growth[growth.length - 1].p >= 0.98;
+  check('三层墨流：wash ≥ body ≥ deposit（错相推进，方向一致）', layering, JSON.stringify(growth));
+  check('三层墨流：进度单调递增、约 7s 内沉积完成', monotonic && reached, JSON.stringify(growth));
 
-  /* 真正会流动的是两样东西：① 光在笔画里游走（柔光像素量涨落）② 墨体轮廓的缓慢鼓动。
-     飞白的横向偏移不随呼吸变化，所以"像素量"只小幅波动，光斑才是主要观感。 */
-  const glows = samples.map((s) => s.glow);
-  const brights = samples.map((s) => s.bright);
-  const glowSpread = (Math.max.apply(null, glows) - Math.min.apply(null, glows)) / Math.max(1, Math.max.apply(null, glows));
-  const brightSpread = (Math.max.apply(null, brights) - Math.min.apply(null, brights)) / Math.max(1, Math.max.apply(null, brights));
-  /* 规范要求：主光脉"持续存在"（总量基本恒定），只有冷白高光沿笔画单向推进。 */
-  check('静止态流动：主光脉持续存在（柔光像素量基本恒定，波动 ≤ 12%）', glowSpread <= 0.12 && glows[0] > 500,
-    'glow=' + JSON.stringify(glows) + ' spread=' + Math.round(glowSpread * 100) + '%');
-  const brightTs = samples.map((s) => s.brightT);
-  const tracked = brightTs.every((t) => t !== null) ? brightTs : null;
-  check('静止态流动：冷白高光单向推进（亮段位置 t 递增、总位移 > 0.05）',
-    tracked && tracked[tracked.length - 1] - tracked[0] > 0.05
-      && tracked.every((t, i) => i === 0 || t >= tracked[i - 1] - 0.002),
-    'brightT=' + JSON.stringify(brightTs) + ' count=' + JSON.stringify(brights));
-  /* 新契约：主体"轮廓稳定、同色相明暗呼吸"——像素量基本不变，变化体现在平均亮度（RGB）上。 */
-  const alphas = samples.map((s) => s.meanAlpha);
-  const alphaSpread = (Math.max.apply(null, alphas) - Math.min.apply(null, alphas)) / Math.max(1, Math.max.apply(null, alphas));
-  check('静止态流动：轮廓稳定（墨迹像素量波动 ≤ 2%）', pixelSpread <= 0.02,
-    'pixels=' + JSON.stringify(pixels) + ' spread=' + Math.round(pixelSpread * 100) + '%');
-  const bodyRgbs = samples.map((s) => s.bodyRgb);
-  const bodySums = bodyRgbs.map((rgb) => (rgb ? rgb[0] + rgb[1] + rgb[2] : 0));
-  const bodySpread = (Math.max.apply(null, bodySums) - Math.min.apply(null, bodySums)) / Math.max(1, Math.max.apply(null, bodySums));
-  check('静止态流动：同色相明暗在缓慢呼吸（平均亮度波动 ≥ 0.4%）', bodySpread >= 0.004,
-    'bodyRGB=' + JSON.stringify(bodyRgbs) + ' spread=' + Math.round(bodySpread * 1000) / 10 + '%');
-  check('静止态流动：幅度克制（宽度变化 ≤ 25%，不是闪烁）', spread <= 0.25,
-    'spread=' + Math.round(spread * 100) + '%');
-  check('静止态流动：中轴线纹丝不动（是流动不是抖动）', sameBox,
-    JSON.stringify(samples.map((s) => s.box)));
-  check('静止态流动：时间确实在推进（elapsed 递增）',
-    samples[3].elapsed > samples[0].elapsed, JSON.stringify(samples.map((s) => s.elapsed)));
+  /* 沉积完成后：内部同色浓度波峰仍缓慢前进（终点 → 起点，不重播生长） */
+  await sleep(1600);
+  const settle1 = await page.evaluate(`(() => { const f = window.RiskTideApp.inkFlow; return { p: f.progress, wave: f.wavePhases[0] }; })()`);
+  await sleep(1600);
+  const settle2 = await page.evaluate(`(() => { const f = window.RiskTideApp.inkFlow; return { p: f.progress, wave: f.wavePhases[0] }; })()`);
+  check('沉积后：主线保持完整、内部潮汐仍缓慢前进',
+    settle1.p === 1 && settle2.p === 1 && settle2.wave > settle1.wave - 1e-6 && (settle2.wave - settle1.wave) > 0,
+    JSON.stringify({ settle1: settle1, settle2: settle2 }));
   await page.screenshot(path.join(SHOT_DIR, 'flow-settled.png'));
 
-  /* prefers-reduced-motion：画面必须完全静止 */
+  /* prefers-reduced-motion：直接完整沉积且完全静止 */
   await page.setReducedMotion(true);
   await page.evaluate(`(() => {
     const f = window.RiskTideApp.inkFlow;
-    f.reducedMotion = true;
-    f.elapsed = 0;
-    f.lastTime = 0;
-    f.draw();
+    f.reducedMotion = true; f.progress = 1; f.bodyProgress = 1; f.depositProgress = 1; f.elapsed = 0; f.draw();
     return 'ok';
   })()`);
-  const still1 = await sample();
+  const r1 = await page.evaluate(`window.__t.inkStats(8)`);
   await sleep(1300);
-  const still2 = await sample();
-  check('静止态流动：prefers-reduced-motion 下完全静止（两次采样一致）',
-    still1.soft === still2.soft && still1.pixels === still2.pixels,
-    JSON.stringify({ a: still1.soft, b: still2.soft, pa: still1.pixels, pb: still2.pixels }));
-  return { samples, spread, pixelSpread, glowSpread, alphaSpread };
+  const r2 = await page.evaluate(`window.__t.inkStats(8)`);
+  check('prefers-reduced-motion：直接完整沉积且完全静止',
+    r1.count === r2.count && r1.meanAlpha === r2.meanAlpha,
+    JSON.stringify({ a: r1.count, b: r2.count, ma: r1.meanAlpha, mb: r2.meanAlpha }));
+  return { growth: growth, settle1: settle1, settle2: settle2 };
 }
-
 async function scenarioNation(browser) {
   const page = await newPage(browser, { width: 1280, height: 900, dsf: 1 });
   await page.gotoRoute(BASE + '/', 4000);
