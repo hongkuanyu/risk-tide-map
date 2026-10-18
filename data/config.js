@@ -248,13 +248,14 @@
         deposit: { width: 4, widthMobile: 3, alpha: 0.92, shadeLift: -0.24, soft: 0.05 },
         /* 落定后的微弱内部潮汐：同色浓度波峰缓慢前进（不形成白线/亮点） */
         wave: {
-          count: 3,
-          period: { safe: 24, critical: 15, danger: 8 },
-          headSharp: 0.04,
-          tailLong: 0.32,
-          brightness: 0.30,
-          widthBoost: 0.07,
-          alphaBoost: 0.10,
+          /* 落定后的可见流向：2 个同色浓度波峰，前端锐利、拖尾短，沿终点→起点持续推进 */
+          count: 2,
+          period: { safe: 16, critical: 10, danger: 6 },
+          headSharp: 0.025,
+          tailLong: 0.12,
+          brightness: 0.50,
+          widthBoost: 0.10,
+          alphaBoost: 0.12,
           rhythm: { amp: 0.10, freq: 0.07 },
           drift: { amp: 0.035, freq: 0.023 },
           corner: { compress: 0.15, brighten: 0.30 }
