@@ -1,4 +1,4 @@
-﻿/* global window, document */
+/* global window, document */
 (function (global) {
   'use strict';
 
@@ -748,7 +748,7 @@
         const c = this.curveAt(i);
         const w = this.waveEnergy(t);
         const tipT = Math.min(1, limit / Math.max(1, total - 1));
-        const headFade = soft <= 0 ? 1 : (0.18 + 0.82 * clamp(smoothstep(0, soft, Math.max(0, tipT - t)), 0, 1));
+        const headFade = soft <= 0 ? 1 : (0.35 + 0.65 * clamp(smoothstep(0, soft, Math.max(0, tipT - t)), 0, 1));
         const waveCorner = wave.corner || { compress: 0.15, brighten: 0.30 };
         const waveCompress = (waveCorner.compress === undefined ? 0.15 : waveCorner.compress) * c;
         const waveW = 1 + waveBoost * w * (1 - waveCompress);

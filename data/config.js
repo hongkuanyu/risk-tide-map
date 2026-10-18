@@ -238,7 +238,7 @@
       route: {
         /* 生长时长随风险连续插值：低风险约 7s、高风险约 4.6s；
            主墨/浓墨以相位偏移错开（约 0.3s / 0.75s @ 5.8s） */
-        grow: { lowRisk: 7.0, highRisk: 4.6, bodyOffset: 0.05, depositOffset: 0.13 },
+        grow: { lowRisk: 7.0, highRisk: 4.6, bodyOffset: 0.08, depositOffset: 0.20 },
         /* 浅墨：最宽、最浅、先到，前端柔和湿墨渗化 */
         wash: { width: 18, widthMobile: 13, alpha: 0.20, shadeLift: 0.34, soft: 0.10 },
         /* 主墨：有色墨体，宽度居中，颜色为最终主色 */
@@ -252,9 +252,9 @@
           period: { safe: 24, critical: 15, danger: 8 },
           headSharp: 0.04,
           tailLong: 0.32,
-          brightness: 0.16,
-          widthBoost: 0.05,
-          alphaBoost: 0.04,
+          brightness: 0.30,
+          widthBoost: 0.07,
+          alphaBoost: 0.10,
           rhythm: { amp: 0.10, freq: 0.07 },
           drift: { amp: 0.035, freq: 0.023 },
           corner: { compress: 0.15, brighten: 0.30 }
