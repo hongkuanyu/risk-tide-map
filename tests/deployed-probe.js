@@ -81,27 +81,6 @@ async function main() {
   report.busInk = await page.evaluate(INK_STATS);
   await page.screenshot(path.join(OUT, 'deployed-02-bus.png'));
 
-  /* 全国模式 */
-  await page.goto(SITE + '/', 7000);
-  await sleep(7000);
-  report.nation = await page.evaluate(`(() => {
-    const app = window.RiskTideApp || {};
-    const cv = document.getElementById('nation-canvas');
-    let ink = 0;
-    if (cv) {
-      const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
-      for (let i = 3; i < d.length; i += 4) if (d[i] >= 8) ink += 1;
-    }
-    return {
-      nationInk: !!app.nationInk,
-      inkFlow: !!app.inkFlow,
-      cities: app.nationInk ? app.nationInk.getMetrics().cities : 0,
-      inkPixels: ink,
-      legend: document.querySelector('.map-legend').textContent.replace(/\\s+/g, ' ').trim()
-    };
-  })()`);
-  await page.screenshot(path.join(OUT, 'deployed-03-nation.png'));
-
   report.errors = page.errors.slice(0, 12);
   console.log(JSON.stringify(report, null, 2));
   await browser.proc.kill();

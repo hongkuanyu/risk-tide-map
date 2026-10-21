@@ -38,19 +38,11 @@
     return x * x * (3 - 2 * x);
   }
 
-  /* 唯一色源：淡墨 -> 灰墨 -> 浓墨 -> 焦墨 -> 焦墨+朱砂。
-     优先委托 js/nation-ink.js 的 OKLab 连续插值，使风险读条 / 高德路线
-     与全国墨场、单程墨线共用同一套颜色；不可用时回退到同一 ramp 线性插值。 */
+  /* 风险读条 / 示意虚线 / 高德路线共用单程风险色阶（coreRamp，青蓝→金→赤红）。 */
   function riskColor(risk) {
     const value = Math.max(0, Math.min(100, Number(risk) || 0));
-    const ramp = (config.ink && config.ink.ramp) || (config.silk && config.silk.riskRamp);
+    const ramp = (config.ink && config.ink.coreRamp) || (config.silk && config.silk.riskRamp);
     if (ramp && ramp.length) {
-      const renderer = global.RiskTideNationInk;
-      if (renderer && typeof renderer.riskColour === 'function') {
-        const out = [0, 0, 0];
-        renderer.riskColour(value, out);
-        return out;
-      }
       const t = value / 100;
       let a = ramp[0];
       let b = ramp[ramp.length - 1];
@@ -313,15 +305,9 @@
       return false;
     }
 
-    isNationView() {
-      const search = global.location ? global.location.search : '';
-      if (/[?&]route=1(?:&|$)/.test(search)) return false;
-      return !!(config.nation && (config.nation.enabled || /[?&]nation=1(?:&|$)/.test(search)));
-    }
-
-    /* 无真实道路几何时折线只作弱化虚线示意；全国视野下保持不可见。 */
+    /* 无真实道路几何时折线只作弱化虚线示意。 */
     previewVisible() {
-      return this.routePreview && !this.isNationView();
+      return this.routePreview;
     }
 
     repositionMarkers() {
@@ -362,8 +348,6 @@
     }
 
     fitRoute() {
-      const routeView = global.location && /[?&]route=1(?:&|$)/.test(global.location.search);
-      if (!routeView && config.nation && config.nation.enabled) return;
       if (!this.map || !this.route || this.route.length < 2) return;
       const padding = global.matchMedia('(max-width: 760px)').matches
         ? config.map.routePaddingMobile

@@ -1,10 +1,10 @@
-'use strict';
+﻿'use strict';
 /* 单程墨线 浏览器回归测试（真实 Edge/Chrome + CDP，不依赖 npm 包）。
    运行：node tests/browser-check.js            全部场景
         node tests/browser-check.js pan hover  只跑指定场景
 
    覆盖：路线真实性、地图同步、悬停 / 点击 / 触摸 / 键盘、笔触宽度稳定性、
-   低帧率动画时长、reduced-motion、规划失败与乱序响应、异常几何、全国模式回归。 */
+   低帧率动画时长、reduced-motion、规划失败与乱序响应、异常几何、单程回归。 */
 
 const { Browser, openPage, sleep } = require('./cdp');
 const fs = require('fs');
@@ -1293,44 +1293,6 @@ async function scenarioFlow(page) {
   check('prefers-reduced-motion：完全静止（两次采样一致）', r1.count === r2.count, JSON.stringify({ a: r1.count, b: r2.count }));
   return { samples: samples };
 }
-async function scenarioNation(browser) {
-  const page = await newPage(browser, { width: 1280, height: 900, dsf: 1 });
-  await page.gotoRoute(BASE + '/', 4000);
-  const nation = await page.evaluate(`(() => {
-    const app = window.RiskTideApp;
-    const cv = document.getElementById('nation-canvas');
-    const ctx = cv.getContext('2d');
-    const img = ctx.getImageData(0, 0, cv.width, cv.height).data;
-    let ink = 0;
-    for (let i = 3; i < img.length; i += 4) if (img[i] >= 8) ink += 1;
-    return {
-      inkFlow: !!app.inkFlow,
-      nationInk: !!app.nationInk,
-      cities: app.nationInk ? app.nationInk.getMetrics().cities : 0,
-      rows: app.nationInk ? app.nationInk.rows.length : 0,
-      inkPixels: ink,
-      legend: document.querySelector('.map-legend').textContent.replace(/\\s+/g, ' ').trim(),
-      badgeHidden: document.getElementById('route-authenticity').hidden,
-      tipVisible: document.getElementById('route-tip').classList.contains('is-visible'),
-      metrics: document.getElementById('metrics').textContent,
-      view: (document.querySelector('.view-nav [aria-current="page"]') || {}).textContent || ''
-    };
-  })()`);
-  check('全国模式：仍用全国墨场渲染器（未启用单程墨线）',
-    nation.nationInk && !nation.inkFlow,
-    JSON.stringify({ nationInk: nation.nationInk, inkFlow: nation.inkFlow }));
-  check('全国模式：43 座城市数据完整', nation.cities === 43 && nation.rows === 43, String(nation.cities));
-  check('全国模式：墨场确实绘制（画布上有墨迹）', nation.inkPixels > 2000, 'inkPixels=' + nation.inkPixels);
-  check('全国模式：图例仍是宽裕 / 紧迫',
-    nation.legend.indexOf('宽裕') >= 0 && nation.legend.indexOf('紧迫') >= 0, nation.legend);
-  check('全国模式：真实性徽标与墨线浮层都不出现',
-    nation.badgeHidden === true && nation.tipVisible === false, JSON.stringify(nation));
-  check('全国模式：默认选中"全国潮汐"', nation.view.indexOf('全国') >= 0, nation.view);
-  check('全国模式：页脚指标为全国墨场', nation.metrics.indexOf('全国墨场') >= 0, nation.metrics);
-  await page.screenshot(path.join(SHOT_DIR, 'after-10-nation.png'));
-  return nation;
-}
-
 /* ---------------- 屏幕矩阵：常见桌面 / 窄屏手机 / 高 DPR -------------------
    每个视口都独立加载一次，检查画布分辨率、投影对齐、浮层与徽标不越界、无横向溢出。 */
 async function scenarioViewports(browser) {
@@ -1540,9 +1502,6 @@ async function main() {
     }
     if (!only.length || only.indexOf('dpr') >= 0) {
       try { await scenarioDpr(browser); } catch (e) { check('场景 dpr 执行', false, e.message); }
-    }
-    if (!only.length || only.indexOf('nation') >= 0) {
-      try { await scenarioNation(browser); } catch (e) { check('场景 nation 执行', false, e.message); }
     }
     if (!only.length || only.indexOf('amap') >= 0) {
       try { await scenarioAmap(browser); } catch (e) { check('场景 amap 执行', false, e.message); }

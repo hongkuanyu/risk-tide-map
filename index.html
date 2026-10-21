@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#efe8dc">
-  <meta name="description" content="风险潮汐：以时间余量，观看全国出行风险的水墨潮位。">
-  <title>风险潮汐 · 全国时间风险地图</title>
+  <meta name="description" content="风险潮汐：一张高铁票的最后一小时——让时间风险沿真实路线流动。">
+  <title>风险潮汐 · 一张高铁票的最后一小时</title>
   <link rel="stylesheet" href="vendor/maplibre-gl.css?v=91">
   <link rel="stylesheet" href="styles.css?v=91">
 </head>
@@ -81,14 +81,9 @@
         </svg>
         <span class="brand-copy">
           <strong>风险潮汐</strong>
-          <small>全国时间风险地图</small>
+          <small>一张高铁票的最后一小时</small>
         </span>
       </a>
-
-      <nav class="view-nav" aria-label="地图视图">
-        <a href="./" data-view="nation">全国潮汐</a>
-        <a href="?route=1" data-view="route">单程墨线</a>
-      </nav>
 
       <div class="scenario-strip" role="group" aria-label="场景预设">
         <button class="scenario-chip" type="button" data-scenario="train" aria-pressed="true">赶高铁</button>
@@ -161,7 +156,6 @@
         <canvas id="silk-canvas" class="silk-canvas" aria-hidden="true"></canvas>
         <!-- 芯光单独一层：墨层是 multiply（只能压暗），发光必须靠 screen 混合 -->
         <canvas id="ink-glow-canvas" class="ink-glow-canvas" aria-hidden="true"></canvas>
-        <canvas id="nation-canvas" class="nation-canvas" aria-hidden="true"></canvas>
         <div class="map-vignette" aria-hidden="true"></div>
         <div class="map-grid" aria-hidden="true"></div>
         <!-- 墨线读数浮层：悬停 / 点击 / 键盘共用。墨色只表示整段行程的时间余量。 -->
@@ -294,9 +288,6 @@
   <script src="js/amap-map.js?v=91"></script>
   <script src="js/silk-route.js?v=91"></script>
   <script src="js/ink-flow.js?v=91"></script>
-  <script src="data/cities.js?v=91"></script>
-  <script src="js/nation-risk.js?v=91"></script>
-  <script src="js/nation-ink.js?v=91"></script>
   <script src="js/ink-gl.js?v=91"></script>
   <script src="js/warm-ui.js?v=91"></script>
   <script src="js/route-tip.js?v=91"></script>

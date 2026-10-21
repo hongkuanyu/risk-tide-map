@@ -1,11 +1,11 @@
-﻿# AI Usage Disclosure
+# AI Usage Disclosure
 
 本项目按用户需求生成了一个完整的前端演示项目。生成内容包含：
 
 - HTML 结构与响应式控件
 - CSS 编辑式排版与响应式视觉系统
 - MapLibre OSM 栅格底图配置
-- 全国风险归一化墨场与连续路线墨线 Canvas 渲染器
+- 单程水墨流光墨线与粒子 Canvas 渲染器
 - OKLab 风险色插值、时间缓动与减少动态效果支持
 - 跨天时间计算与风险等级映射
 - 本地静态服务器、GitHub Pages 说明和待核对数据标记

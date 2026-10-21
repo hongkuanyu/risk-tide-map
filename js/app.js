@@ -8,22 +8,7 @@
   function clamp01(value) { return Math.min(1, Math.max(0, value)); }
 
   function createApp() {
-    /* 全国模式：在创建地图控制器之前套用全国视野（覆盖 center/zoom/maxBounds），
-       这样锁死无锡的 maxBounds 不会把 43 座城市挡在画布外。 */
-    const routeView = /[?&]route=1(?:&|$)/.test(global.location ? global.location.search : '');
-    const nationOn = !routeView && (!!(config.nation && config.nation.enabled)
-      || /[?&]nation=1(?:&|$)/.test(global.location ? global.location.search : ''));
-    const viewLink = document.querySelector('.view-nav [data-view="' + (nationOn ? 'nation' : 'route') + '"]');
-    if (viewLink) viewLink.setAttribute('aria-current', 'page');
-    if (nationOn && config.nation.map) {
-      const nm = config.nation.map;
-      config.map.center = nm.center;
-      config.map.zoom = nm.zoom;
-      config.map.minZoom = nm.minZoom;
-      config.map.maxZoom = nm.maxZoom;
-      config.map.maxBounds = nm.maxBounds;
-      if (config.amap) config.amap.zoom = nm.amapZoom;
-    }
+    /* 单程墨线是唯一模式：不再有全国 / 单程双模式切换 */
 
     const search = global.location ? global.location.search : '';
     const host = global.location ? global.location.hostname : '';
@@ -41,61 +26,16 @@
     /* One slot, two backends. They expose the same API, so every call site
        below is backend-agnostic and the WebGL2 path can be adopted (or rolled
        back) by flipping config.inkGL.enabled. */
-    /* 全国墨迹与单路线墨流二选一：nation 开启时不启动单路线渲染器 */
-    const nationCanvas = document.getElementById('nation-canvas');
-    const nationInk = (nationOn && global.RiskTideNationInk && nationCanvas)
-      ? new global.RiskTideNationInk(nationCanvas, mapController) : null;
-
-    if (nationInk && shell) shell.dataset.nation = 'on';
-    if (nationOn) {
-      const legend = document.querySelector('.map-legend');
-      if (legend) {
-        legend.setAttribute('aria-label', '时间风险浓度图例');
-        legend.innerHTML = '<span>宽裕</span><i class="legend-risk-scale" aria-hidden="true"></i><span>紧迫</span>';
-      }
-    } else {
-      const status = document.getElementById('status-line');
-      if (status) status.textContent = '移近路线，查看时间余量';
-    }
-
-    function refreshNation() {
-      if (!nationInk) return;
-      const state = ui.getState();
-      const eps = (mapController.getEndpoints && mapController.getEndpoints()) || config.endpoints;
-      const origin = (eps.campus && eps.campus.coordinate) || config.endpoints.campus.coordinate;
-      const rows = global.RiskTideNationRisk.computeAll(global.RiskTideCities.list, origin, {
-        trainTime: state.trainTime,
-        departureTime: state.departureTime,
-        stationMinutes: state.stationMinutes,
-        safeBufferMinutes: config.risk.safeBufferMinutes,
-        mode: (config.nation && config.nation.mode) || 'rail'
-      });
-      nationInk.setData(rows);
-      /* 全国模式下首屏答案应给全国结论，而不是本地路线时间 */
-      const heroLatest = document.getElementById('hero-latest');
-      const heroBuffer = document.getElementById('hero-buffer');
-      const heroLabel = document.querySelector('.hero-label');
-      const reachable = rows.filter(function (r) { return r.risk !== null && r.risk < 30; });
-      const tight = rows.filter(function (r) { return r.risk !== null && r.risk >= 30 && r.risk < 70; });
-      if (heroLabel) heroLabel.textContent = '最远安全可达';
-      if (heroLatest) {
-        let farthest = null;
-        reachable.forEach(function (r) { if (!farthest || r.distanceKm > farthest.distanceKm) farthest = r; });
-        heroLatest.textContent = farthest ? farthest.city.name : '暂无';
-      }
-      if (heroBuffer) {
-        heroBuffer.textContent = '全国 ' + rows.length + ' 城中 ' + reachable.length + ' 城宽裕'
-          + (tight.length ? ' · ' + tight.length + ' 城偏紧' : '');
-      }
-    }
+    const statusLine = document.getElementById('status-line');
+    if (statusLine) statusLine.textContent = '移近路线，查看时间余量';
 
     const inkGL = (config.inkGL && config.inkGL.enabled && global.RiskTideInkGL && silkCanvas)
       ? new global.RiskTideInkGL(silkCanvas, mapController)
       : null;
-    const inkFlow = nationOn ? null : ((inkGL && !inkGL.failed) ? inkGL
+    const inkFlow = (inkGL && !inkGL.failed) ? inkGL
       : ((config.inkFlow && config.inkFlow.enabled && global.RiskTideInkFlow && silkCanvas)
         ? new global.RiskTideInkFlow(silkCanvas, mapController)
-        : null));
+        : null);
     const ui = new global.RiskTideUI(global.routes);
 
     /* The ink-map palette lives in data/config.js; publish it to CSS so the
@@ -119,7 +59,7 @@
       }
       /* 图例色条直接取自配置里的色阶（唯一色源）：
          路线墨线的风险通道是"流光"（coreRamp），所以图例用光脉色阶。 */
-      const ramps = [config.ink && config.ink.coreRamp, config.ink && config.ink.ramp];
+      const ramps = [config.ink && config.ink.coreRamp];
       for (let r = 0; r < ramps.length; r += 1) {
         const ramp = ramps[r];
         if (!ramp || !ramp.length) continue;
@@ -298,7 +238,6 @@
         safeBufferMinutes: config.risk.safeBufferMinutes
       });
       latestResult = result;
-      refreshNation();
 
       const route = getSelectedRoute(state);
       const status = inkStatusFor(route);
@@ -343,7 +282,6 @@
 
     /* 这条线到底可不可信：徽标与状态行共用一份判断，没有疑问时不出提示条。 */
     function routeNotice() {
-      if (nationOn) return null;
       const state = ui.getState();
       const road = hasRoadGeometry(getSelectedRoute(state));
       if (planFailure) {
@@ -472,7 +410,7 @@
         pinned = false;
         inkFlow.setHover(0);
         tip.hide();
-        if (!nationOn) ui.setStatus('移近路线，查看时间余量', 'normal');
+        ui.setStatus('移近路线，查看时间余量', 'normal');
       };
 
       shell.addEventListener('pointermove', function (event) {
@@ -535,10 +473,6 @@
       container: document.getElementById('map'),
       canvasStage: document.getElementById('map-shell'),
       onMovement: function (moving) {
-        if (nationInk) {
-          nationInk.projectDirty = true;
-          nationInk.requestFrame();
-        }
         if (silk) silk.routeDirty = true;
         /* 关键：标脏之后必须请求一帧，否则滚轮缩放（指针不动、没有 hover 事件）
            和惯性滑动时墨线会停在旧投影上，肉眼可见地掉队。 */
@@ -548,10 +482,6 @@
         if (shell) shell.classList.toggle('is-moving', !!moving);
         if (!moving) {
           global.setTimeout(function () {
-            if (nationInk) {
-              nationInk.projectDirty = true;
-              nationInk.requestFrame();
-            }
             if (silk) silk.routeDirty = true;
             if (inkFlow) { inkFlow.routeDirty = true; requestInkFrame(); }
           }, 80);
@@ -559,22 +489,9 @@
       },
       onStatus: function (status) {
         if (status.state === 'ready') {
-          /* 只覆盖配置对象不够：地图初始化后仍会按自己的 maxBounds 收敛视野，
-             所以在 ready 之后显式再设一次全国视野。 */
-          if (nationOn && mapController.map && config.nation && config.nation.map) {
-            const nm = config.nation.map;
-            try {
-              if (typeof mapController.map.setZoomAndCenter === 'function') {
-                mapController.map.setZoomAndCenter(nm.amapZoom, nm.center);
-              } else if (typeof mapController.map.jumpTo === 'function') {
-                mapController.map.jumpTo({ center: nm.center, zoom: nm.zoom });
-              }
-            } catch (e) { }
-          }
-          if (nationInk) nationInk.resize();
           if (silk) { silk.resize(); silk.routeDirty = true; }
           if (inkFlow) { inkFlow.resize(); inkFlow.routeDirty = true; requestInkFrame(); }
-          ui.setStatus(nationOn ? '选择城市，查看时间潮位' : '路线已载入 · 可调整时间条件', 'normal');
+          ui.setStatus('路线已载入 · 可调整时间条件', 'normal');
         } else {
           ui.setStatus(status.message || '地图已降级，风险计算仍可使用。', 'warning');
         }
@@ -608,56 +525,8 @@
       }
       applyPlanResult(initPlanSeq, routes);
     });
-    if (nationOn && config.nation && config.nation.defaultWindowMinutes) {
-      const target = Number(config.nation.defaultWindowMinutes);
-      if (Number.isFinite(target) && target > 0) {
-        ui.state.departureOffset = Math.min(720, Math.max(5, Math.round(target)));
-        ui.state.departureTime = riskModel.addMinutes(ui.state.trainTime, -ui.state.departureOffset);
-        ui.update();
-        applyState(ui.getState());
-      }
-    }
-
-    if (nationInk) nationInk.start();
     if (inkFlow) inkFlow.start();
     applyState(ui.getState());
-
-    if (nationInk && shell) {
-      const status = document.getElementById('status-line');
-      function cityAtPoint(event) {
-        if (event.target.closest('button, input, select, a')) return null;
-        const rect = shell.getBoundingClientRect();
-        const x = event.clientX - rect.left;
-        const y = event.clientY - rect.top;
-        let nearest = null;
-        let distance = 22;
-        nationInk.rows.forEach(function (row) {
-          const next = Math.hypot(row.x - x, row.y - y);
-          if (next < distance) { nearest = row; distance = next; }
-        });
-        return nearest;
-      }
-      shell.addEventListener('pointermove', function (event) {
-        const row = cityAtPoint(event);
-        nationInk.setSelected(row ? row.city.id : null);
-        if (row && status) {
-          status.textContent = row.city.name + ' · 时间风险 ' + Math.round(row.displayRisk) + ' / 100';
-          status.dataset.type = 'normal';
-        }
-      });
-      shell.addEventListener('click', function (event) {
-        const row = cityAtPoint(event);
-        nationInk.setSelected(row ? row.city.id : null);
-        if (row && status) {
-          status.textContent = row.city.name + ' · 时间风险 ' + Math.round(row.displayRisk) + ' / 100';
-          status.dataset.type = 'normal';
-        }
-      });
-      shell.addEventListener('pointerleave', function () {
-        nationInk.setSelected(null);
-        if (status) status.textContent = '选择城市，查看时间潮位';
-      });
-    }
 
 
     function syncSearch() {
@@ -709,7 +578,6 @@
 
     function handleVisibility() {
       const visible = !document.hidden;
-      if (nationInk) nationInk.setVisible(visible);
       if (silk) silk.setVisible(visible);
       if (inkFlow) inkFlow.setVisible(visible);
     }
@@ -721,10 +589,6 @@
       global.clearTimeout(resizeTimer);
       resizeTimer = global.setTimeout(function () {
         mapController.resize();
-        if (nationInk) {
-          nationInk.resize();
-          nationInk.projectDirty = true;
-        }
         if (silk) { silk.resize(); silk.routeDirty = true; }
         if (inkFlow) { inkFlow.resize(); inkFlow.routeDirty = true; requestInkFrame(); }
       }, 120);
@@ -732,12 +596,9 @@
 
     global.setInterval(function () {
       if (document.hidden) return;
-      const metrics = nationInk ? nationInk.getMetrics() : null;
       if (inkFlow) {
         const flow = inkFlow.getMetrics();
         ui.updateMetrics({ text: '单程墨线 · ' + flow.points + ' 个路线采样点' });
-      } else if (metrics) {
-        ui.updateMetrics({ text: '全国墨场 · ' + metrics.cities + ' 城 · ' + metrics.field });
       }
     }, 1800);
 
@@ -745,7 +606,6 @@
       map: mapController,
       silk: silk,
       inkFlow: inkFlow,
-      nationInk: nationInk,
       ui: ui,
       result: function () { return latestResult; }
     };

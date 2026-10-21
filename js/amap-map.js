@@ -175,14 +175,6 @@
         && global.AMap && global.AMap.Driving && global.AMap.Transfer);
     }
 
-    /* 全国视野下不能按本地路线自动贴合，也不显示本地示意的虚线 */
-    isNationView() {
-      var nat = config.nation;
-      var search = global.location ? global.location.search : '';
-      if (/[?&]route=1(?:&|$)/.test(search)) return false;
-      return !!(nat && (nat.enabled || /[?&]nation=1(?:&|$)/.test(search)));
-    }
-
     replanRoutes(guard) {
       if (!this.map || !this.ready) {
         this.lastPlanError = '地图尚未就绪';
@@ -374,19 +366,12 @@
       this.setRisk(this.risk);
     }
 
-    /* 无真实道路几何时：底图折线退成一条弱化虚线，绝不冒充真实路线。
-       全国视野下保持不可见，避免在 3.4 级视野里凭空多出一条本地虚线。 */
+    /* 无真实道路几何时：底图折线退成一条弱化虚线，绝不冒充真实路线。 */
     previewVisible() {
-      return this.routePreview && !this.isNationView();
+      return this.routePreview;
     }
 
     fitRoute() {
-      /* 全国模式：绝不能按本地路线自动贴合，否则 setFitView 会把视野拉回无锡，
-         43 座城市的墨团全落到画布之外（这就是线上看不到墨的原因）。 */
-      var _nat = global.RiskTideConfig && global.RiskTideConfig.nation;
-      var routeView = global.location && /[?&]route=1(?:&|$)/.test(global.location.search);
-      if (!routeView && _nat && (_nat.enabled || (global.location && /[?&]nation=1(?:&|$)/.test(global.location.search)))) return;
-
       if (!this.map || !this.route || this.route.length < 2) return;
       const overlays = [this.routeHalo, this.routePolyline, this.markers.campus, this.markers.station].filter(Boolean);
       if (overlays.length) {

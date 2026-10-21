@@ -542,25 +542,6 @@ button:disabled, input:disabled { opacity: 0.55; cursor: not-allowed; }
 
 /* 纸纹 overlay 已移除：纸纹现在位于地图下方，透出来。 */
 
-/* ---------- 全国墨迹层 ---------- */
-.nation-canvas {
-  position: absolute;
-  inset: 0;
-  z-index: 6;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  mix-blend-mode: multiply;
-  display: none;          /* nation.enabled = false 时完全不参与渲染 */
-}
-.map-shell[data-nation="on"] .nation-canvas { display: block; }
-.map-shell[data-nation="on"] .map-marker { display: none; }
-.legend-risk-scale {
-  width: 92px;
-  height: 3px;
-  background: linear-gradient(90deg, #b8b5ad, #62615a 55%, #242522);
-}
-
 /* ---------- V4 · 丝绸湿墨路线 ---------- */
 .silk-canvas {
   position: absolute;

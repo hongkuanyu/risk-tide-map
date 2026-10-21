@@ -187,39 +187,8 @@
       reducedMotionScale: 0.32
     },
 
-    /* 全国视图默认开启；?route=1 进入单程路线视图。
-       行程时间来自直线距离示意模型，并非实时交通或铁路时刻表。 */
-    nation: {
-      enabled: true,
-      mode: 'rail',            // 'rail' | 'drive'
-      defaultWindowMinutes: 480,
-      map: {
-        center: [104.5, 35.5],
-        zoom: 3.4,
-        minZoom: 3.2,
-        maxZoom: 16.5,
-        maxBounds: [[72, 14], [138, 55]],
-        amapZoom: 3.6
-      },
-      ink: {
-        projection: 'auto',
-        bounds: [73, 18, 136, 54],
-        pad: 0.06
-      }
-    },
-
-    /* ---- 水墨颜料系统（唯一色源）----------------------------------------
-       淡墨 -> 灰墨 -> 浓墨 -> 焦墨 -> 焦墨+朱砂，OKLab 连续插值，不做 if/else
-       色阶切换。视觉只读取 displayRisk；朱砂在最后约 6% 风险区间慢慢渗出。 */
+    /* ---- 单程墨线配色（唯一色源）---------------------------------------- */
     ink: {
-      ramp: [
-        { at: 0.00, rgb: [114, 140, 122] },  // 淡墨（略偏青绿，颜色读得出来）
-        { at: 0.30, rgb: [86, 110, 98] },  // 灰墨
-        { at: 0.58, rgb: [60, 80, 74] },     // 浓墨
-        { at: 0.82, rgb: [44, 58, 52] },     // 深墨（不再压到纯黑）
-        { at: 0.94, rgb: [46, 44, 38] },     // 深墨平台
-        { at: 1.00, rgb: [136, 52, 42] }     // 朱砂暗渗（红比原来更看得见）
-      ],
       /* 主光脉色阶（单程路线专用，OKLab 连续插值，不允许跳变）：
          0-30 青蓝 #68DFED -> 30-70 过渡到金 #EABB6C -> 70-100 过渡到赤红 #E66A5A。 */
       coreRamp: [
@@ -281,16 +250,6 @@
           headSharp: 0.025, tailLong: 0.12, brightness: 0.25, widthBoost: 0.05,
           alphaBoost: 0.06, rhythm: { amp: 0.10, freq: 0.07 },
           drift: { amp: 0.035, freq: 0.023 }, corner: { compress: 0.15, brighten: 0.30 } }
-      },
-      tide: {
-        shoreAmplitude: 0.035,     // 潮岸扩散幅度（肉眼可见但克制）
-        shorePeriod: 60,           // 秒
-        contourRisk: 55,           // 潮岸等值线阈值
-        contourAlpha: 0.34,
-        dotTier1: 13,              // 主要枢纽城市墨源半径 (px)
-        dotTier2: 9,               // 一般城市墨源半径 (px)
-        fieldRadius: 30,           // 墨场核半径 (px)：离散墨点只在邻近城市间融合
-        fieldAlpha: 0.22           // 墨场最大不透明度：留白透气，不做热力图糊底
       }
     },
 

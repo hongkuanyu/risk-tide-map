@@ -36,15 +36,8 @@
 
   function applyScenario(el, key) {
     var preset = scenarios[key];
-    /* 默认时间窗随模式走：单路线 2 小时够用，
-       全国视图必须 8 小时，否则 43 城全部顶到最高风险、看不到梯度。 */
+    /* 单程模式唯一：场景预设一律使用单程时间窗 */
     var offset = preset ? preset.offset : null;
-    var cfg = global.RiskTideConfig;
-    var nationMode = !!(cfg && cfg.nation
-      && (cfg.nation.enabled || /[?&]nation=1/.test(location.search)));
-    if (nationMode && cfg.nation.defaultWindowMinutes) {
-      offset = cfg.nation.defaultWindowMinutes;
-    }
     if (!preset || key === 'custom') {
       markActive(el, key);
       if (el.note) el.note.textContent = preset ? preset.note : '';
