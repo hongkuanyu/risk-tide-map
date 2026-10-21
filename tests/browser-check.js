@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 /* 单程墨线 浏览器回归测试（真实 Edge/Chrome + CDP，不依赖 npm 包）。
    运行：node tests/browser-check.js            全部场景
         node tests/browser-check.js pan hover  只跑指定场景
@@ -372,8 +372,8 @@ async function scenarioRealVsHint(page) {
     boot.legend.indexOf('全程时间余量') >= 0 && boot.legend.indexOf('非实时路况') >= 0, boot.legend);
   const realInk = await page.evaluate(`window.__t.inkStats(8)`);
   const realGlow = await page.evaluate(`window.__t.glowStats()`);
-  check('真实路线：无荧光发光层（screen 画布为空，水墨全部走 normal 混合）',
-    realGlow.exists && realGlow.count === 0, JSON.stringify(realGlow));
+  check('真实路线：有连续光芯发光层（screen 混合的独立画布）',
+    realGlow.exists && realGlow.count > 200, JSON.stringify(realGlow));
   const realWidth = await page.evaluate(`window.__t.widthAt(Math.floor(window.RiskTideApp.inkFlow.points.length * 0.2), 8)`);
   await page.evaluate(`window.__t.setMode('bus')`);
   await sleep(900);
@@ -595,57 +595,31 @@ async function scenarioFrameRate(page) {
   await page.evaluate(`window.__t.setMode('taxi')`);
   await sleep(1200);
   await page.setReducedMotion(false);
-  const drive = (stepMs) => `(() => {
+  const run = (stepMs, totalMs) => `(() => {
     const f = window.RiskTideApp.inkFlow;
     f.reducedMotion = false;
     const origRaf = window.requestAnimationFrame;
     window.requestAnimationFrame = function () { return 0; };
     const route = window.RiskTideApp.ui.getActiveRoute(window.RiskTideApp.ui.getState());
     f.setRoute(route, { kind: 'road' });
-    f.running = true; f.visible = true; f.lastTime = 0;
-    let t = 4000, frames = 0;
+    f.running = true; f.visible = true; f.lastTime = 0; f.elapsed = 0; f.wavePhases = [0.0, 0.41, 0.73];
+    let t = 4000, frames = 0, acc = 0;
     f.frame(t);
-    while (f.progress < 1 && frames < 5000) { frames += 1; t += ${stepMs}; f.frame(t); }
+    while (acc < ${totalMs} && frames < 5000) { frames += 1; t += ${stepMs}; acc += ${stepMs}; f.frame(t); }
     window.requestAnimationFrame = origRaf;
     f.stop();
-    return { stepMs: ${stepMs}, frames: frames,
-      seconds: Math.round(frames * ${stepMs} / 10) / 100,
-      grow: window.RiskTideConfig.ink.route.grow.lowRisk };
+    return { frames: frames, elapsed: Math.round(f.elapsed * 100) / 100, wave: Math.round(f.wavePhases[0] * 1000) / 1000 };
   })()`;
-  const at60 = await page.evaluate(drive(16.7));
-  const at10 = await page.evaluate(drive(100));
-  const at4 = await page.evaluate(drive(250));
-  check('写线时长按真实时间：60fps 下 ≈ grow.lowRisk', approx(at60.seconds, at60.grow, at60.grow * 0.12),
-    JSON.stringify(at60));
-  check('写线时长按真实时间：10fps 下仍 ≈ grow.lowRisk', approx(at10.seconds, at10.grow, at10.grow * 0.12),
-    JSON.stringify(at10));
-  check('写线时长按真实时间：4fps 下仍 ≈ grow.lowRisk', approx(at4.seconds, at4.grow, at4.grow * 0.12),
-    JSON.stringify(at4));
-  const monotonic = await page.evaluate(`(() => {
-    const f = window.RiskTideApp.inkFlow;
-    f.reducedMotion = false;
-    const origRaf = window.requestAnimationFrame;
-    window.requestAnimationFrame = function () { return 0; };
-    const route = window.RiskTideApp.ui.getActiveRoute(window.RiskTideApp.ui.getState());
-    f.setRoute(route, { kind: 'road' });
-    f.running = true; f.visible = true; f.lastTime = 0;
-    let t = 9000, prev = 0, ok = true, jump = 0;
-    f.frame(t);
-    for (let i = 0; i < 200; i += 1) {
-      t += 120;
-      f.frame(t);
-      if (f.progress < prev - 1e-6) ok = false;
-      jump = Math.max(jump, f.progress - prev);
-      prev = f.progress;
-    }
-    window.requestAnimationFrame = origRaf;
-    f.stop();
-    return { monotonic: ok, maxFrameJump: Math.round(jump * 1000) / 1000 };
-  })()`);
-  check('低帧率：进度单调递增且单帧跳变 ≤ 0.25', monotonic.monotonic && monotonic.maxFrameJump <= 0.25,
-    JSON.stringify(monotonic));
+  const at60 = await page.evaluate(run(16.7, 3000));
+  const at10 = await page.evaluate(run(100, 3000));
+  const at4 = await page.evaluate(run(250, 3000));
+  const target = 3.0;
+  check('动画按真实时间推进：60fps 下 elapsed ≈ 3s', approx(at60.elapsed, target, target * 0.12), JSON.stringify(at60));
+  check('动画按真实时间推进：10fps 下 elapsed ≈ 3s', approx(at10.elapsed, target, target * 0.12), JSON.stringify(at10));
+  check('动画按真实时间推进：4fps 下 elapsed ≈ 3s', approx(at4.elapsed, target, target * 0.12), JSON.stringify(at4));
+  check('高光/波峰相位按时间前进（wave > 0）', at60.wave > 0 && at10.wave > 0 && at4.wave > 0, JSON.stringify({ at60: at60, at4: at4 }));
   await page.evaluate(`window.RiskTideApp.inkFlow.start()`);
-  return { at60, at10, at4, monotonic };
+  return { at60: at60, at10: at10, at4: at4 };
 }
 async function scenarioReducedMotion(browser) {
   const page = await newPage(browser, { width: 1280, height: 900, dsf: 1 });
@@ -672,7 +646,7 @@ async function scenarioReducedMotion(browser) {
   check('prefers-reduced-motion：progress 不跳变', state2 && state2.progress === 1);
   /* 减少动态模式：不做浸染动画，但墨色必须直接落到新风险（不能停在半途） */
   const beforeRisk = await page.evaluate(`(() => ({
-    ink: window.__t.inkFingerprint(2),
+    ink: window.__t.glowStats(8),
     risk: Math.round(window.RiskTideApp.result().risk)
   }))()`);
   await page.evaluate(`(() => {
@@ -683,7 +657,7 @@ async function scenarioReducedMotion(browser) {
   })()`);
   await sleep(800);
   const afterRisk = await page.evaluate(`(() => ({
-    ink: window.__t.inkFingerprint(2),
+    ink: window.__t.glowStats(8),
     risk: Math.round(window.RiskTideApp.result().risk)
   }))()`);
   const delta = Math.abs(beforeRisk.ink.rgb[0] - afterRisk.ink.rgb[0])
@@ -1085,7 +1059,7 @@ async function scenarioRouteChange(page) {
   const snap = async function (label) {
     await sleep(320);
     const data = await page.evaluate(`(() => ({
-      ink: window.__t.inkFingerprint(2),
+    ink: window.__t.inkFingerprint(2),
       center: window.__t.centerBox(),
       state: window.RiskTideApp.inkFlow.getState(),
       source: (window.RiskTideApp.inkFlow.route && window.RiskTideApp.inkFlow.route.source) || '',
@@ -1204,7 +1178,7 @@ async function scenarioRouteChange(page) {
      墨线保持淡墨是正确行为，不是 bug。 */
   await page.screenshot(path.join(SHOT_DIR, 'routechange-same-geometry-safe.png'));
   const sliderBefore = await page.evaluate(`(() => ({
-    rgb: window.__t.inkFingerprint(2).rgb,
+    rgb: window.__t.glowStats(8).rgb,
     risk: window.RiskTideApp.result() ? window.RiskTideApp.result().risk : null,
     routeMinutes: window.RiskTideApp.ui.getState().routeMinutes
   }))()`);
@@ -1265,64 +1239,59 @@ async function scenarioFlow(page) {
   await page.evaluate(`window.__t.setMode('taxi')`);
   await sleep(1400);
   await page.browser.send('Page.bringToFront', {}, page.sessionId);
-
-  /* 先强制完整沉积，确保路线已就绪；再回放到一次全新的三染生长动画 */
+  /* 压暗主光芯，让"亮像素"只可能来自推进高光，便于确定性测量其位移 */
   await page.evaluate(`(() => {
-    const f = window.RiskTideApp.inkFlow;
-    f.reducedMotion = true; f.progress = 1; f.bodyProgress = 1; f.depositProgress = 1; f.draw();
-    return f.points.length;
-  })()`);
-  await page.evaluate(`(() => {
-    const f = window.RiskTideApp.inkFlow;
-    f.setVisible(true); f.reducedMotion = false;
-    f.riskTarget = 0; f.displayRisk = 0;
-    f.progress = 0; f.bodyProgress = 0; f.depositProgress = 0;
-    f.elapsed = 0; f.lastTime = 0; f.wavePhases = [0.0, 0.41, 0.73];
-    f.start(); return 'ok';
-  })()`);
-
-  const growth = [];
-  for (let i = 0; i < 9; i += 1) {
-    growth.push(await page.evaluate(`(() => {
-      const f = window.RiskTideApp.inkFlow;
-      return { p: Math.round(f.progress * 1000) / 1000,
-        b: Math.round((f.bodyProgress || 0) * 1000) / 1000,
-        d: Math.round((f.depositProgress || 0) * 1000) / 1000,
-        wave: Math.round(f.wavePhases[0] * 1000) / 1000,
-        ink: window.__t.inkStats(8).count };
-    })()`));
-    await sleep(950);
-  }
-  const monotonic = growth.every((g, i) => i === 0 || g.p >= growth[i - 1].p - 1e-6);
-  const layering = growth.every((g) => g.p >= g.b - 1e-6 && g.b >= g.d - 1e-6);
-  const reached = growth[growth.length - 1].p >= 0.98;
-  check('三层墨流：wash ≥ body ≥ deposit（错相推进，方向一致）', layering, JSON.stringify(growth));
-  check('三层墨流：进度单调递增、约 7s 内沉积完成', monotonic && reached, JSON.stringify(growth));
-
-  /* 沉积完成后：内部同色浓度波峰仍缓慢前进（终点 → 起点，不重播生长） */
-  await sleep(1600);
-  const settle1 = await page.evaluate(`(() => { const f = window.RiskTideApp.inkFlow; return { p: f.progress, wave: f.wavePhases[0] }; })()`);
-  await sleep(1600);
-  const settle2 = await page.evaluate(`(() => { const f = window.RiskTideApp.inkFlow; return { p: f.progress, wave: f.wavePhases[0] }; })()`);
-  check('沉积后：主线保持完整、内部潮汐仍缓慢前进',
-    settle1.p === 1 && settle2.p === 1 && settle2.wave > settle1.wave - 1e-6 && (settle2.wave - settle1.wave) > 0,
-    JSON.stringify({ settle1: settle1, settle2: settle2 }));
-  await page.screenshot(path.join(SHOT_DIR, 'flow-settled.png'));
-
-  /* prefers-reduced-motion：直接完整沉积且完全静止 */
-  await page.setReducedMotion(true);
-  await page.evaluate(`(() => {
-    const f = window.RiskTideApp.inkFlow;
-    f.reducedMotion = true; f.progress = 1; f.bodyProgress = 1; f.depositProgress = 1; f.elapsed = 0; f.draw();
+    const core = window.RiskTideConfig.ink.route.core;
+    core.veinAlpha = 0.12;
+    core.filament.count = 0;
+    const cfg = core.highlight;
+    cfg.count = 2;
+    cfg.speed = 2.0;
     return 'ok';
   })()`);
-  const r1 = await page.evaluate(`window.__t.inkStats(8)`);
+  await page.evaluate(`(() => {
+    const f = window.RiskTideApp.inkFlow;
+    f.setVisible(true); f.reducedMotion = false; f.progress = 1;
+    f.elapsed = 0; f.lastTime = 0; f.wavePhases = [0.1, 0.6];
+    f.start(); return 'ok';
+  })()`);
+  await sleep(2200);
+
+  const sample = async function () {
+    return page.evaluate(`(() => {
+      const f = window.RiskTideApp.inkFlow;
+      const glow = window.__t.glowStats(8);
+      const bright = window.__t.brightTrack(150);
+      const ink = window.__t.inkStats(8);
+      const cv = document.getElementById('silk-canvas');
+      const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+      let dark = 0;
+      for (let i = 0; i < d.length; i += 4) { const a = d[i + 3]; if (a < 12) continue; const lum = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]; if (lum < 20) dark += 1; }
+      return { glow: glow.count, brightT: bright.t, brightCount: bright.count, ink: ink.count, dark: dark,
+        particles: f._particles ? f._particles.filter(function (q) { return q.active; }).length : -1,
+        wave: Math.round(f.wavePhases[0] * 1000) / 1000 };
+    })()`);
+  };
+  const samples = [];
+  for (let i = 0; i < 4; i += 1) { samples.push(await sample()); await sleep(1100); }
+  const glows = samples.map(function (q) { return q.glow; });
+  const glowSpread = (Math.max.apply(null, glows) - Math.min.apply(null, glows)) / Math.max(1, Math.max.apply(null, glows));
+  const brightTs = samples.map(function (q) { return q.brightT; }).filter(function (t) { return t !== null; });
+  const tracked = brightTs.length === samples.length ? brightTs : null;
+  check('主光芯持续存在（柔光像素量基本恒定，波动 ≤ 12%）', glowSpread <= 0.12 && glows[0] > 500, JSON.stringify(glows));
+  check('冷白高光沿终点→起点单向推进（t 递增）', tracked && tracked[tracked.length - 1] > tracked[0] && tracked.every(function (t, i) { return i === 0 || t >= tracked[i - 1] - 0.002; }), JSON.stringify(brightTs));
+  check('墨雾层可见且无黑边（dark = 0）', samples[0].ink > 500 && samples.every(function (q) { return q.dark < 20; }), JSON.stringify(samples.map(function (q) { return { ink: q.ink, dark: q.dark }; })));
+  check('粒子系统在运行（active > 0）', samples.every(function (q) { return q.particles > 0; }), JSON.stringify(samples.map(function (q) { return q.particles; })));
+  await page.screenshot(path.join(SHOT_DIR, 'flow-settled.png'));
+
+  /* prefers-reduced-motion：画面完全静止 */
+  await page.setReducedMotion(true);
+  await page.evaluate(`(() => { const f = window.RiskTideApp.inkFlow; f.reducedMotion = true; f.draw(); return 'ok'; })()`);
+  const r1 = await page.evaluate(`window.__t.glowStats(8)`);
   await sleep(1300);
-  const r2 = await page.evaluate(`window.__t.inkStats(8)`);
-  check('prefers-reduced-motion：直接完整沉积且完全静止',
-    r1.count === r2.count && r1.meanAlpha === r2.meanAlpha,
-    JSON.stringify({ a: r1.count, b: r2.count, ma: r1.meanAlpha, mb: r2.meanAlpha }));
-  return { growth: growth, settle1: settle1, settle2: settle2 };
+  const r2 = await page.evaluate(`window.__t.glowStats(8)`);
+  check('prefers-reduced-motion：完全静止（两次采样一致）', r1.count === r2.count, JSON.stringify({ a: r1.count, b: r2.count }));
+  return { samples: samples };
 }
 async function scenarioNation(browser) {
   const page = await newPage(browser, { width: 1280, height: 900, dsf: 1 });

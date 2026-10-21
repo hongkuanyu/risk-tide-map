@@ -9,6 +9,13 @@
     return t * t * (3 - 2 * t);
   }
 
+  /* 确定性伪随机（LCG）：粒子系统用，避免 Math.random 保证可复现、无高频抖动 */
+  let _seed = 123456789;
+  function rand01() {
+    _seed = (_seed * 1664525 + 1013904223) >>> 0;
+    return _seed / 4294967296;
+  }
+
   /* ---- OKLab 感知色彩空间：风险色连续插值 + 同色相明暗 -------------------
      RGB 直接线性插值会经过灰绿脏色，所以所有风险色阶都在 OKLab 中插值。 */
   function srgbToLinear(c) {
@@ -48,6 +55,11 @@
     return [linearToSrgb(r), linearToSrgb(g), linearToSrgb(b)];
   }
   function rgbStr(rgb) { return 'rgb(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ')'; }
+  function hexToRgb(hex) {
+    const h = String(hex || '').replace('#', '');
+    if (h.length !== 6) return [22, 52, 61];
+    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+  }
   /* 同色相提亮 / 压暗：amount ∈ [-1,1]。正数向白提亮、负数同色相压暗。 */
   function oklabLiftLab(lab, amount) {
     const k = clamp(amount, -1, 1);
@@ -155,6 +167,9 @@
       this.pulses = [];
       this.pulseHeads = [];
       this.wavePhases = [0.0, 0.41, 0.73];
+      this._particles = [];
+      this._particleCount = 0;
+      this._particleReady = false;
       this.fadeIn = 1;
       this.frameTimer = 0;
       this._colourLut = null;
@@ -171,7 +186,7 @@
     }
 
     targetDpr() {
-      return Math.min(global.devicePixelRatio || 1, this.reducedMotion ? 1.5 : 2);
+      return Math.min(global.devicePixelRatio || 1, this.width < 620 ? 1.5 : 2);
     }
 
     resize() {
@@ -227,15 +242,19 @@
       this.kind = info.kind;
       this.reason = info.reason || '';
       this.routeDirty = true;
-      this.progress = (this.reducedMotion || this.kind !== 'road') ? 1 : 0;
-      this.bodyProgress = this.progress;
-      this.depositProgress = this.progress;
+      this.progress = 1;              // 主线始终完整，不再生长
+      this.bodyProgress = 1;
+      this.depositProgress = 1;
       this.writeElapsed = 0;
+      if (this._particles) this._particles.forEach(function (q) { q.active = false; });
       this.hover = 0;
       this.hoverTarget = 0;
       this.pulses = [];
       this.pulseHeads = [];
       this.wavePhases = [0.0, 0.41, 0.73];
+      this._particles = [];
+      this._particleCount = 0;
+      this._particleReady = false;
       this.displayRisk = this.riskTarget;   // 新路线直接落到当前目标风险
       this._colourLut = null;
       this.fadeIn = this.reducedMotion ? 1 : 0;
@@ -413,8 +432,8 @@
     }
 
     bodyWidth() {
-      const body = (config.ink && config.ink.route && config.ink.route.body) || {};
-      return body.width === undefined ? 11 : body.width;
+      const mist = (config.ink && config.ink.route && config.ink.route.mist) || {};
+      return mist.width === undefined ? 24 : mist.width;
     }
 
     /* 出现动画时长：低风险约 7s、高风险约 4.6s，随 displayRisk 连续插值 */
@@ -558,7 +577,7 @@
       let fallback = fixedColour || null;
       if (!fallback) {
         if (channel === 'highlight') {
-          fallback = rgbStr(oklabLift(rampRgb(config.ink && config.ink.coreRamp, risk01 * 100), 0.35));
+          fallback = rgbStr(rampRgb(config.ink && config.ink.highlightRamp, risk01 * 100));
         } else if (channel === 'vein') {
           const core = ((config.ink && config.ink.route) || {}).core || {};
           const lift = core.veinLighten === undefined ? 0.24 : core.veinLighten;
@@ -634,34 +653,142 @@
 
     /* 一笔三染：浅墨先行（最宽最浅）、主墨浸润（居中）、浓墨沉积（最窄最深）。
        三层同路径、同心，limit 互有相位差，远看仍是一条完整墨线。 */
-    drawBody() {
+    /* 墨雾：低透明度暗青灰羽化层（normal 混合），绝不以线性边框存在 */
+    drawMist() {
       const route = (config.ink && config.ink.route) || {};
-      const wash = route.wash || {};
-      const body = route.body || {};
-      const deposit = route.deposit || {};
-      const n = Math.max(1, this.points.length - 1);
+      const mist = route.mist || {};
+      const n = this.points.length - 1;
+      if (n < 1) return;
       const mobile = this.width < 620;
-      const washW = mobile ? (wash.widthMobile === undefined ? 13 : wash.widthMobile) : (wash.width === undefined ? 18 : wash.width);
-      const bodyW = mobile ? (body.widthMobile === undefined ? 8 : body.widthMobile) : (body.width === undefined ? 11 : body.width);
-      const depW = mobile ? (deposit.widthMobile === undefined ? 3 : deposit.widthMobile) : (deposit.width === undefined ? 4 : deposit.width);
-      if (this.progress > 0.001) {
-        this.drawRibbon(this.progress * n, { width: washW, alpha: wash.alpha === undefined ? 0.20 : wash.alpha,
-          shadeLift: wash.shadeLift === undefined ? 0.34 : wash.shadeLift, soft: wash.soft === undefined ? 0.10 : wash.soft,
-          undulate: 0.05, phase: 0.0 });
-      }
-      if (this.bodyProgress > 0.001) {
-        this.drawRibbon(this.bodyProgress * n, { width: bodyW, alpha: body.alpha === undefined ? 0.72 : body.alpha,
-          shadeLift: body.shadeLift === undefined ? 0 : body.shadeLift, soft: body.soft === undefined ? 0.06 : body.soft,
-          undulate: 0.04, phase: 1.3 });
-      }
-      if (this.depositProgress > 0.001) {
-        this.drawRibbon(this.depositProgress * n, { width: depW, alpha: deposit.alpha === undefined ? 0.92 : deposit.alpha,
-          shadeLift: deposit.shadeLift === undefined ? -0.24 : deposit.shadeLift, soft: deposit.soft === undefined ? 0.05 : deposit.soft,
-          undulate: 0.03, phase: 2.6 });
+      const base = mobile ? (mist.widthMobile === undefined ? 15 : mist.widthMobile) : (mist.width === undefined ? 24 : mist.width);
+      const colour = rgbStr(hexToRgb(mist.color || '#16343D'));
+      const passes = (mist.passes && mist.passes.length) ? mist.passes : [{ width: 1, alpha: 1 }];
+      const breathe = mist.breathe || { amp: 0.05, period: 14 };
+      const self = this;
+      for (let i = 0; i < passes.length; i += 1) {
+        const pass = passes[i];
+        if (!pass || !pass.width) continue;
+        this.tracePass(n, function (scale) {
+          const e = smoothstep(0, 0.01, scale.t) * (1 - smoothstep(0.99, 1, scale.t));
+          if (e <= 0.002) return { offset: 0, width: 0, alpha: 0 };
+          const br = 1 + Math.sin(scale.t * 5.0 - self.elapsed * (Math.PI * 2) / (breathe.period || 14)) * (breathe.amp || 0.05);
+          return { offset: 0, width: base * (pass.width || 1) * e * (0.92 + 0.08 * scale.taper),
+            alpha: (mist.alpha === undefined ? 0.07 : mist.alpha) * (pass.alpha === undefined ? 1 : pass.alpha) * e * br };
+        }, 'ink', this.ctx, 0, 0, colour);
       }
     }
 
-    /* 一层纯色主体：宽度 = 基准 × 收笔走向 × 运笔轻重 × 边缘毛糙 × 风险倍率 × 波峰加宽。 */
+    /* 粒子预算：三层 墨雾/流光/高光，随设备与 DPR 自适应 */
+    particleBudget() {
+      const pc = (config.ink && config.ink.route && config.ink.route.particles) || {};
+      const mobile = this.width < 620;
+      if (mobile) return (this.dpr > 1.5 || this.width < 360) ? (pc.lowMobile || 250) : (pc.mobile || 600);
+      return (this.dpr > 1.5) ? (pc.lowDesktop || 700) : (pc.desktop || 1600);
+    }
+
+    initParticles() {
+      const n = this.particleBudget();
+      if (!this._particles) this._particles = [];
+      while (this._particles.length < n) {
+        this._particles.push({ type: 'mist', t: 0, lat: 0, size: 1, alpha: 0, speed: 0, life: 0, active: false });
+      }
+      const share = ((config.ink && config.ink.route && config.ink.route.particles) || {}).share || { mist: 0.50, flow: 0.35, highlight: 0.15 };
+      for (let i = 0; i < n; i += 1) {
+        const k = i / Math.max(1, n);
+        const p = this._particles[i];
+        p.type = k < share.mist ? 'mist' : (k < (share.mist || 0.5) + (share.flow || 0.35) ? 'flow' : 'highlight');
+        p.active = false;
+      }
+      this._particleCount = n;
+      this._particleReady = true;
+    }
+
+    spawnParticle(p) {
+      const pc = (config.ink && config.ink.route && config.ink.route.particles) || {};
+      const risk = this.displayRisk / 100;
+      p.active = true;
+      p.t = rand01();
+      p.lat = rand01() * 2 - 1;
+      if (p.type === 'mist') {
+        p.speed = (pc.mistDrift || 0.008) * (0.5 + rand01());
+        p.life = 3 + rand01() * 4;
+        p.size = 0.7 + rand01() * 1.4;
+        p.alpha = 0.10 + rand01() * 0.15;
+      } else if (p.type === 'flow') {
+        p.speed = (pc.flowSpeed || 0.10) * (1 + (pc.flowSpeedRisk || 1.8) * risk) * (0.7 + rand01() * 0.6);
+        p.life = 1e9;
+        p.size = 0.9 + rand01() * 1.1;
+        p.alpha = 0.30 + rand01() * 0.25;
+      } else {
+        p.speed = (pc.flowSpeed || 0.10) * (1 + (pc.flowSpeedRisk || 1.8) * risk) * (1.6 + rand01() * 0.8);
+        p.life = 0.4 + rand01() * 0.8;
+        p.size = 0.8 + rand01() * 1.0;
+        p.alpha = 0.55 + rand01() * 0.35;
+      }
+    }
+
+    updateParticles(dt) {
+      if (this.reducedMotion || dt <= 0) return;
+      if (!this._particleReady) this.initParticles();
+      for (let i = 0; i < this._particleCount; i += 1) {
+        const p = this._particles[i];
+        if (!p.active) { this.spawnParticle(p); continue; }
+        if (p.type === 'mist') {
+          p.life -= dt;
+          p.t += p.speed * dt * 0.4 * (Math.sin(i * 1.7) > 0 ? 1 : -1);
+          p.lat += (rand01() - 0.5) * 0.5 * dt;
+          if (p.life <= 0) p.active = false;
+        } else {
+          p.t += p.speed * dt;
+          if (p.t > 1) p.t -= 1;
+          p.lat += (rand01() - 0.5) * 0.3 * dt;
+          if (p.type === 'highlight') { p.life -= dt; if (p.life <= 0) p.active = false; }
+        }
+        p.lat = clamp(p.lat, -1, 1);
+      }
+    }
+
+    /* 沿路线弧长 t（0=终点，1=起点）+ 法向偏移 lat 取屏幕点 */
+    pointAt(t, lat) {
+      const points = this.points;
+      const n = points.length;
+      if (n < 2) return null;
+      const f = clamp(t, 0, 1) * (n - 1);
+      const i = Math.min(n - 2, Math.floor(f));
+      const local = f - i;
+      const a = points[i], b = points[i + 1];
+      const x = a.x + (b.x - a.x) * local;
+      const y = a.y + (b.y - a.y) * local;
+      let nx = -(b.y - a.y), ny = (b.x - a.x);
+      const len = Math.hypot(nx, ny) || 1;
+      nx /= len; ny /= len;
+      const half = this.bodyWidth() * 0.5;
+      return { x: x + nx * lat * half, y: y + ny * lat * half };
+    }
+
+    drawParticles() {
+      if (!this._particleReady || !this.ctx) return;
+      const ctx = this.ctx;
+      const base = rampRgb(config.ink && config.ink.coreRamp, this.displayRisk);
+      const hi = rampRgb(config.ink && config.ink.highlightRamp, this.displayRisk);
+      const mistCol = hexToRgb(((config.ink && config.ink.route && config.ink.route.mist) || {}).color || '#16343D');
+      for (let i = 0; i < this._particleCount; i += 1) {
+        const p = this._particles[i];
+        if (!p.active) continue;
+        const pt = this.pointAt(p.t, p.lat);
+        if (!pt) continue;
+        let col = base;
+        if (p.type === 'mist') col = mistCol;
+        else if (p.type === 'highlight') col = hi;
+        ctx.globalAlpha = clamp(p.alpha, 0, 1);
+        ctx.fillStyle = rgbStr(col);
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
+
     drawRibbon(limit, spec) {
       const ctx = this.ctx;
       const points = this.points;
@@ -797,9 +924,163 @@
     /* 中央流光：同色柔光 + 连续光芯 + 光流丝 + 推进高光（screen 混合） */
     /* 已按新水墨契约移除 screen 发光层：三层墨线全部用 normal 混合，
        避免白色光芯 / bloom / 荧光描边。保留方法名供回退与静态校验。 */
-    drawCore() { /* no-op：发光层已禁用 */ }
+    /* 中央流光：连续光芯 + 柔和流光 + 光流丝 + 推进高光（screen 混合） */
+    drawCore() {
+      const route = (config.ink && config.ink.route) || {};
+      const cfg = route.core;
+      if (!cfg || cfg.enabled === false || !this.glowCtx) return;
+      const self = this;
+      const body = this.bodyWidth();
+      const risk01 = clamp(this.displayRisk / 100, 0, 1);
+      const hold = cfg.hold === undefined ? 0.08 : cfg.hold;
+      const envelope = function (t) {
+        return smoothstep(0, hold, t) * (1 - smoothstep(1 - hold, 1, t));
+      };
+      const corner = cfg.corner || {};
+      const compress = corner.compress === undefined ? 0.40 : corner.compress;
+      const brighten = corner.brighten === undefined ? 0.55 : corner.brighten;
+      const curveOf = function (i) { return self.curveAt(i); };
+      const time = this.reducedMotion ? 0 : this.elapsed;
+      const veinDrift = time * (cfg.veinDrift === undefined ? 0.22 : cfg.veinDrift);
+      const veinWidth = Math.max(1.2, body * (cfg.veinRatio === undefined ? 0.16 : cfg.veinRatio));
+      const glowRange = cfg.glowRatio || { min: 0.55, max: 0.85 };
+      const glowWidth = body * (glowRange.min + ((glowRange.max || glowRange.min) - glowRange.min) * risk01);
+      const n = this.points.length - 1;
 
-    drawPulses() { /* no-op：终点脉冲已随发光层移除 */ }
+      /* 柔和流光：中心亮、两侧渐隐 */
+      this.tracePass(n, function (scale, risk, i) {
+        const e = envelope(scale.t);
+        if (e <= 0.002) return { offset: 0, width: 0, alpha: 0 };
+        const c = curveOf(i);
+        const w = self.waveEnergy(scale.t);
+        return {
+          offset: 0,
+          width: glowWidth * e * (0.9 + 0.1 * scale.taper) * (1 - compress * 0.25 * c),
+          alpha: (cfg.glowAlpha === undefined ? 0.30 : cfg.glowAlpha) * e
+            * (0.75 + 0.55 * risk01) * (0.85 + 0.15 * scale.breathe) * (1 + brighten * 0.25 * c) * (1 + 0.25 * w)
+        };
+      }, 'core', this.glowCtx, cfg.phase, cfg.undulate);
+
+      /* 连续光芯：始终存在，极轻明暗呼吸，波峰经过时更亮 */
+      this.tracePass(n, function (scale, risk, i) {
+        const e = envelope(scale.t);
+        if (e <= 0.002) return { offset: 0, width: 0, alpha: 0 };
+        const c = curveOf(i);
+        const w = self.waveEnergy(scale.t);
+        const breeze = 0.94 + 0.06 * Math.sin(scale.t * 3.1 - veinDrift);
+        return {
+          offset: 0,
+          width: veinWidth * e * (0.92 + 0.08 * scale.taper) * breeze * (1 - compress * c) * (1 + 0.18 * w),
+          alpha: clamp((cfg.veinAlpha === undefined ? 0.85 : cfg.veinAlpha) * e * breeze
+            * (1 + brighten * 0.40 * c) * (1 + 0.30 * w), 0, 1)
+        };
+      }, 'vein', this.glowCtx, cfg.phase, cfg.undulate);
+
+      /* 光流丝：贴着光芯的细光，速度略有差异 */
+      const fl = cfg.filament || {};
+      const flCount = Math.max(0, Math.round(fl.count === undefined ? 3 : fl.count));
+      const flWidth = Math.max(0.4, veinWidth * (fl.widthRatio === undefined ? 0.22 : fl.widthRatio));
+      const flHold = fl.hold === undefined ? 0.16 : fl.hold;
+      const flSpeed = this.waveSpeed() * (fl.speed === undefined ? 1.25 : fl.speed);
+      const flSpread = (fl.spreadRatio === undefined ? 0.28 : fl.spreadRatio) * veinWidth * 0.5;
+      const flTravel = this.reducedMotion ? 0 : this.elapsed * flSpeed;
+      for (let k = 0; k < flCount; k += 1) {
+        const lane = (k - (flCount - 1) / 2) * (k % 2 === 0 ? 1 : -1) * 0.6;
+        const phaseOffset = k * 1.9;
+        this.tracePass(n, function (scale, risk, i) {
+          const e = smoothstep(0, flHold, scale.t) * (1 - smoothstep(1 - flHold, 1, scale.t));
+          if (e <= 0.002) return { offset: 0, width: 0, alpha: 0 };
+          const head = ((k / flCount + flTravel + phaseOffset * 0.05) % 1 + 1) % 1;
+          let d = scale.t - head;
+          if (d > 0.5) d -= 1;
+          if (d < -0.5) d += 1;
+          const win = 1 - smoothstep(0, 0.30, Math.abs(d));
+          if (win <= 0.02) return { offset: 0, width: 0, alpha: 0 };
+          return {
+            offset: lane * e,
+            width: flWidth * e * (0.8 + 0.4 * win),
+            alpha: (fl.alpha === undefined ? 0.28 : fl.alpha) * win * e * (0.9 + 0.1 * scale.breathe)
+          };
+        }, 'highlight', this.glowCtx, cfg.phase, cfg.undulate);
+      }
+
+      /* 推进高光流段：前端尖亮、尾部柔长，拖尾随风险变长，弯道压缩增亮 */
+      const hl = cfg.highlight || {};
+      const count = Math.max(0, Math.round(hl.count === undefined ? 3 : hl.count));
+      if (!count) return;
+      const headLen = Math.max(0.004, hl.headLength === undefined ? 0.016 : hl.headLength);
+      const tailLen = Math.max(headLen, (hl.tailLength === undefined ? 0.16 : hl.tailLength)
+        * (1 + (hl.tailRisk === undefined ? 0.4 : hl.tailRisk) * risk01));
+      const speed = this.waveSpeed() * (hl.speed === undefined ? 1.5 : hl.speed);
+      const travel = this.reducedMotion ? 0 : this.elapsed * speed;
+      if (!this.pulseHeads) this.pulseHeads = [];
+      for (let k = 0; k < count; k += 1) {
+        const base = (k / count + (k === 1 ? 0.37 : k === 2 ? 0.68 : 0)) % 1;
+        const head = ((base + travel) % 1 + 1) % 1;
+        const prev = this.pulseHeads[k];
+        if (!this.reducedMotion && prev !== undefined && head < prev - 0.25) {
+          const pulses = cfg.pulse || {};
+          if (pulses.enabled !== false && this.pulses.length < 3) {
+            const last = this.points[this.points.length - 1];
+            this.pulses.push({
+              t: 0,
+              x: last.x,
+              y: last.y,
+              risk: this.displayRisk,
+              life: pulses.life === undefined ? 1.5 : pulses.life,
+              radius: pulses.radius || [5, 30],
+              alpha: pulses.alpha === undefined ? 0.30 : pulses.alpha
+            });
+          }
+        }
+        this.pulseHeads[k] = head;
+        this.tracePass(n, function (scale, risk, i) {
+          const e = envelope(scale.t);
+          if (e <= 0.002) return { offset: 0, width: 0, alpha: 0 };
+          let d = scale.t - head;
+          if (d > 0.5) d -= 1;
+          if (d < -0.5) d += 1;
+          const front = d >= 0 ? 1 - smoothstep(0, headLen, d) : 1;
+          const tail = d <= 0 ? Math.exp(d / tailLen) : 1;
+          const win = front * tail;
+          if (win <= 0.012) return { offset: 0, width: 0, alpha: 0 };
+          const tailFade = d <= 0 ? clamp(-d / tailLen, 0, 1) : 0;
+          const c = curveOf(i);
+          return {
+            offset: 0,
+            width: (hl.width === undefined ? 0.85 : hl.width) * (0.55 + 2.4 * tailFade)
+              * (1 - compress * 0.2 * c) + veinWidth * 0.18,
+            alpha: clamp((hl.alpha === undefined ? 0.88 : hl.alpha) * win * e
+              * (1 + brighten * 0.30 * c), 0, 1)
+          };
+        }, 'highlight', this.glowCtx, cfg.phase, cfg.undulate);
+      }
+    }
+
+    drawPulses() {
+      const ctx = this.glowCtx;
+      if (!ctx || !this.pulses || !this.pulses.length) return;
+      if (this.reducedMotion) { this.pulses.length = 0; return; }
+      const time = this.elapsed;
+      for (let i = this.pulses.length - 1; i >= 0; i -= 1) {
+        const pulse = this.pulses[i];
+        const age = time - pulse.t;
+        const life = Math.max(0.2, pulse.life || 1.5);
+        if (age < 0 || age > life) { this.pulses.splice(i, 1); continue; }
+        const k = age / life;
+        const radius = pulse.radius[0] + (pulse.radius[1] - pulse.radius[0]) * k;
+        const fade = (1 - k) * (1 - k) * (pulse.alpha || 0.30);
+        const ink = rampRgb(config.ink && config.ink.coreRamp, pulse.risk);
+        const grad = ctx.createRadialGradient(pulse.x, pulse.y, radius * 0.35, pulse.x, pulse.y, radius);
+        grad.addColorStop(0, 'rgba(' + ink[0] + ',' + ink[1] + ',' + ink[2] + ',0)');
+        grad.addColorStop(0.72, 'rgba(' + ink[0] + ',' + ink[1] + ',' + ink[2] + ',' + (fade * 0.85).toFixed(3) + ')');
+        grad.addColorStop(1, 'rgba(' + ink[0] + ',' + ink[1] + ',' + ink[2] + ',0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(pulse.x, pulse.y, radius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
     drawHead() { /* no-op：笔头由浅墨层的柔和前缘替代 */ }
     drawPreview() {
       const ctx = this.ctx;
@@ -835,8 +1116,10 @@
       if (this.glowCtx) this.glowCtx.clearRect(0, 0, this.width, this.height);
       if (this.points.length < 2) return;
       if (this.kind !== 'road') { this.drawPreview(); return; }
-      this.buildColourLut();
-      this.drawBody();
+      this.drawMist();
+      this.drawParticles();
+      this.drawCore();
+      this.drawPulses();
     }
 
     frame(timestamp) {
@@ -853,16 +1136,7 @@
       if (Math.abs(this.hoverTarget - this.hover) < HOVER_EPS) this.hover = this.hoverTarget;
       this.advanceRisk(dt);
       this.advanceWaves(dt);
-      if (!this.reducedMotion && this.kind === 'road' && this.progress < 1) {
-        const grow = this.growDuration();
-        const step = writeDt / Math.max(0.5, grow);
-        this.progress = Math.min(1, this.progress + step);
-        const g = (config.ink && config.ink.route && config.ink.route.grow) || {};
-        const bodyOffset = g.bodyOffset === undefined ? 0.05 : g.bodyOffset;
-        const depositOffset = g.depositOffset === undefined ? 0.13 : g.depositOffset;
-        this.bodyProgress = Math.min(1, Math.max(0, (this.progress - bodyOffset) / Math.max(1e-3, 1 - bodyOffset)));
-        this.depositProgress = Math.min(1, Math.max(0, (this.progress - depositOffset) / Math.max(1e-3, 1 - depositOffset)));
-      }
+      this.updateParticles(dt);
       this.draw();
       /* 真实路线持续流动：潮汐波峰/光流丝/推进高光永远在动，保持满帧。 */
       if (this.kind === 'road' && !this.reducedMotion) this.requestFrame();

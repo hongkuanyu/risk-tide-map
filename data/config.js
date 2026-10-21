@@ -1,4 +1,4 @@
-﻿/* global window */
+/* global window */
 (function (global) {
   'use strict';
 
@@ -47,7 +47,7 @@
     },
 
     amap: {
-      enabled: true,
+      enabled: false,   // 本次仅用 OSM 底图，不接入高德
       key: 'f791654cdc91bbe2b567810d34074a70',
       securityJsCode: 'aba2b2cd55058232eef8d45e0e62f72e',
       version: '2.0',
@@ -220,55 +220,67 @@
         { at: 0.94, rgb: [46, 44, 38] },     // 深墨平台
         { at: 1.00, rgb: [136, 52, 42] }     // 朱砂暗渗（红比原来更看得见）
       ],
-      /* 主光脉色阶（单程路线专用，低饱和矿物水墨，OKLab 连续插值，不允许跳变）：
-         0-30 石青黛绿 #587D78 -> 50 青灰玉色 #8C8B73 -> 70 沉稳赭金 #AA835B
-         -> 85 暖朱砂 #A76B5C -> 100 深朱砂红 #9C514C。
-         目标是宣纸水墨的矿物颜料感，不发荧光、不出现警报红。 */
+      /* 主光脉色阶（单程路线专用，OKLab 连续插值，不允许跳变）：
+         0-30 青蓝 #68DFED -> 30-70 过渡到金 #EABB6C -> 70-100 过渡到赤红 #E66A5A。 */
       coreRamp: [
-        { at: 0.00, rgb: [88, 125, 120] },   // #587D78 石青黛绿 · 安全
-        { at: 0.30, rgb: [88, 125, 120] },   // 0-30 平台，避免过早升温
-        { at: 0.50, rgb: [140, 139, 115] },  // #8C8B73 青灰玉色 · 升温
-        { at: 0.70, rgb: [170, 131, 91] },   // #AA835B 沉稳赭金 · 紧迫
-        { at: 0.85, rgb: [167, 107, 92] },   // #A76B5C 暖朱砂 · 风险增强
-        { at: 1.00, rgb: [156, 81, 76] }     // #9C514C 深朱砂红 · 危险
+        { at: 0.00, rgb: [104, 223, 237] },  // #68DFED 青蓝 · 安全
+        { at: 0.55, rgb: [234, 187, 108] },  // #EABB6C 金 · 临界
+        { at: 1.00, rgb: [230, 106, 90] }    // #E66A5A 赤红 · 危险
       ],
-      /* 单程墨线：一笔三染 —— 浅墨先行、主墨浸润、浓墨沉积。
-         三层同路径、同心，最终融合为一条厚实、低饱和、无黑边、不发荧光的水墨线。
-         出现动画由终点向起点推进；风险只改颜色/速度，不重置动画。 */
+      /* 流动高光（沿主光脉推进的冷白短光段） */
+      highlightRamp: [
+        { at: 0.00, rgb: [229, 250, 252] },  // #E5FAFC 冷白
+        { at: 0.55, rgb: [255, 243, 214] },  // #FFF3D6 暖白
+        { at: 1.00, rgb: [255, 224, 216] }   // #FFE0D8 浅赤白
+      ],
+      /* 单程墨线四层结构：半透明墨雾 + 柔和流光 + 连续光芯 + 透明消散。
+         主线始终完整、无黑边；内部冷白高光沿终点→起点持续输运。 */
       route: {
-        /* 生长时长随风险连续插值：低风险约 7s、高风险约 4.6s；
-           主墨/浓墨以相位偏移错开（约 0.3s / 0.75s @ 5.8s） */
-        grow: { lowRisk: 7.0, highRisk: 4.6, bodyOffset: 0.08, depositOffset: 0.20 },
-        /* 浅墨：最宽、最浅、先到，前端柔和湿墨渗化 */
-        wash: { width: 18, widthMobile: 13, alpha: 0.20, shadeLift: 0.34, soft: 0.10 },
-        /* 主墨：有色墨体，宽度居中，颜色为最终主色 */
-        body: { width: 11, widthMobile: 8, alpha: 0.72, shadeLift: 0.0, soft: 0.06,
-          taperFloor: 0.5, fadeStart: 0.7 },
-        /* 浓墨：最窄、最深、最后沉积，深而不黑 */
-        deposit: { width: 4, widthMobile: 3, alpha: 0.92, shadeLift: -0.24, soft: 0.05 },
-        /* 落定后的微弱内部潮汐：同色浓度波峰缓慢前进（不形成白线/亮点） */
-        wave: {
-          /* 落定后的可见流向：2 个同色浓度波峰，前端锐利、拖尾短，沿终点→起点持续推进 */
-          count: 2,
-          period: { safe: 16, critical: 10, danger: 6 },
-          headSharp: 0.025,
-          tailLong: 0.12,
-          brightness: 0.50,
-          widthBoost: 0.10,
-          alphaBoost: 0.12,
-          rhythm: { amp: 0.10, freq: 0.07 },
-          drift: { amp: 0.035, freq: 0.023 },
-          corner: { compress: 0.15, brighten: 0.30 }
+        /* 墨雾：低透明度暗青灰，羽化扩散，绝不以线性边框存在 */
+        mist: {
+          color: '#16343D',
+          width: 24, widthMobile: 15,
+          alpha: 0.22,
+          passes: [
+            { width: 1.00, alpha: 0.28 },
+            { width: 0.72, alpha: 0.45 },
+            { width: 0.50, alpha: 0.62 }
+          ],
+          breathe: { amp: 0.05, period: 14 }
         },
-        /* 风险调制：仅轻微加宽，不能变成压力管 */
-        risk: {
-          width: { min: 0.96, max: 1.10 },
-          alpha: { min: 0.94, max: 1.0 }
+        /* 光芯 + 柔光 + 高光 + 光流丝（screen 混合的发光层） */
+        core: {
+          enabled: true,
+          veinRatio: 0.16,
+          veinAlpha: 0.85,
+          veinLighten: 0.35,
+          veinDrift: 0.22,
+          glowRatio: { min: 0.55, max: 0.85 },
+          glowAlpha: 0.30,
+          hold: 0.08,
+          phase: 0.5,
+          undulate: 0.10,
+          highlight: { count: 3, speed: 1.5, width: 0.85, alpha: 0.88,
+            headLength: 0.016, tailLength: 0.16, tailRisk: 0.4, spread: 0.34 },
+          filament: { count: 3, widthRatio: 0.22, alpha: 0.28, speed: 1.25,
+            spreadRatio: 0.28, hold: 0.16 },
+          pulse: { enabled: true, radius: [5, 30], alpha: 0.30, life: 1.5 },
+          corner: { compress: 0.40, brighten: 0.55 }
         },
-        /* 风险颜色平滑：约 0.5s */
-        propagate: { rise: 0.5, fall: 0.5 },
-        /* 极微弱呼吸（整条线不许膨胀收缩） */
-        flow: { amplitude: 0.04, period: 19 }
+        /* 三层粒子：墨雾 50% / 流光 35% / 高光 15%，随设备性能自适应 */
+        particles: {
+          desktop: 1600, mobile: 600, lowDesktop: 700, lowMobile: 250,
+          share: { mist: 0.50, flow: 0.35, highlight: 0.15 },
+          flowSpeed: 0.10, flowSpeedRisk: 1.8,
+          mistDrift: 0.008
+        },
+        risk: { width: { min: 0.96, max: 1.10 }, alpha: { min: 0.94, max: 1.0 } },
+        propagate: { rise: 0.45, fall: 0.55 },
+        flow: { amplitude: 0.05, period: 17 },
+        wave: { count: 2, period: { safe: 16, critical: 10, danger: 6 },
+          headSharp: 0.025, tailLong: 0.12, brightness: 0.25, widthBoost: 0.05,
+          alphaBoost: 0.06, rhythm: { amp: 0.10, freq: 0.07 },
+          drift: { amp: 0.035, freq: 0.023 }, corner: { compress: 0.15, brighten: 0.30 } }
       },
       tide: {
         shoreAmplitude: 0.035,     // 潮岸扩散幅度（肉眼可见但克制）
