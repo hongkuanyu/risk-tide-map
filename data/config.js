@@ -207,9 +207,9 @@
       route: {
         /* 墨雾：低透明度暗青灰，羽化扩散，绝不以线性边框存在 */
         mist: {
-          color: '#16343D',
-          width: 24, widthMobile: 15,
-          alpha: 0.22,
+          color: '#14303A',
+          width: 26, widthMobile: 17,
+          alpha: 0.55,
           passes: [
             { width: 1.00, alpha: 0.28 },
             { width: 0.72, alpha: 0.45 },
@@ -220,12 +220,12 @@
         /* 光芯 + 柔光 + 高光 + 光流丝（screen 混合的发光层） */
         core: {
           enabled: true,
-          veinRatio: 0.16,
-          veinAlpha: 0.85,
+          veinRatio: 0.18,
+          veinAlpha: 0.95,
           veinLighten: 0.35,
           veinDrift: 0.22,
           glowRatio: { min: 0.55, max: 0.85 },
-          glowAlpha: 0.30,
+          glowAlpha: 0.38,
           hold: 0.08,
           phase: 0.5,
           undulate: 0.10,
