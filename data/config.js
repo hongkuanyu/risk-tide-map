@@ -209,11 +209,11 @@
         mist: {
           color: '#14303A',
           width: 26, widthMobile: 17,
-          alpha: 0.55,
+          alpha: 0.92,
           passes: [
-            { width: 1.00, alpha: 0.28 },
-            { width: 0.72, alpha: 0.45 },
-            { width: 0.50, alpha: 0.62 }
+            { width: 1.00, alpha: 0.45 },
+            { width: 0.72, alpha: 0.68 },
+            { width: 0.50, alpha: 0.90 }
           ],
           breathe: { amp: 0.05, period: 14 }
         },
@@ -221,11 +221,11 @@
         core: {
           enabled: true,
           veinRatio: 0.18,
-          veinAlpha: 0.95,
+          veinAlpha: 1.0,
           veinLighten: 0.35,
           veinDrift: 0.22,
           glowRatio: { min: 0.55, max: 0.85 },
-          glowAlpha: 0.38,
+          glowAlpha: 0.45,
           hold: 0.08,
           phase: 0.5,
           undulate: 0.10,
