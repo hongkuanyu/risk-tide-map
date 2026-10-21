@@ -47,7 +47,7 @@
     },
 
     amap: {
-      enabled: false,   // 本次仅用 OSM 底图，不接入高德
+      enabled: true,    // 默认高德底图 + 地址搜索/定位；?osm=1 强制 OSM
       key: 'f791654cdc91bbe2b567810d34074a70',
       securityJsCode: 'aba2b2cd55058232eef8d45e0e62f72e',
       version: '2.0',
