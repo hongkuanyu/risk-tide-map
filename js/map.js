@@ -89,6 +89,7 @@
       this.onStatus = null;
       this.styleLoaded = false;
       this.errorNotified = false;
+      this.lastPlanError = '';
     }
 
     init(options) {
@@ -96,13 +97,13 @@
       this.canvasStage = options.canvasStage;
       this.onMovement = options.onMovement || function () {};
       this.onStatus = options.onStatus || function () {};
-      /* 与高德控制器保持同一套接口；降级底图不会真的规划路线。 */
+      /* 与高德控制器保持同一套接口；无在线服务时由 OSRM 请求真实道路折线。 */
       this.onRoutesReady = options.onRoutesReady || function () {};
 
       if (!this.container) return Promise.reject(new Error('缺少地图容器。'));
 
       return waitForMapLibre()
-        .then(() => this.createMap())
+        .then(() => { this.createMap(); return null; })
         .catch((error) => {
           this.enableFallback(error.message);
           return null;
@@ -307,9 +308,66 @@
 
     getEndpoints() { return this.endpoints; }
 
-    /* OpenStreetMap 降级底图没有在线路线规划：内置几何就是全部可用数据。 */
+    /* OpenStreetMap 底图没有官方在线导航，但可通过 OSRM 公共演示服务
+       为任意起终点请求真实驾车道路折线；失败时退化为起终点示意。 */
     supportsPlanning() {
-      return false;
+      return true;
+    }
+
+    replanRoutes(guard) {
+      if (!this.endpoints.campus || !this.endpoints.station
+          || !this.endpoints.campus.coordinate || !this.endpoints.station.coordinate) {
+        this.lastPlanError = '请先设置起点和终点';
+        return Promise.resolve(null);
+      }
+      const origin = this.endpoints.campus.coordinate;
+      const destination = this.endpoints.station.coordinate;
+      const url = 'https://router.project-osrm.org/route/v1/driving/'
+        + origin[0] + ',' + origin[1] + ';' + destination[0] + ',' + destination[1]
+        + '?overview=full&geometries=geojson&alternatives=false&steps=false';
+      const self = this;
+      return global.fetch(url).then(function (res) {
+        if (!res.ok) throw new Error('OSRM 请求失败（' + res.status + '）');
+        return res.json();
+      }).then(function (json) {
+        if (guard && !guard()) return null;
+        if (!json || json.code !== 'Ok' || !json.routes || !json.routes.length) {
+          throw new Error('OSRM 未返回可用路线');
+        }
+        const route = json.routes[0];
+        const geometry = route.geometry || {};
+        const coordinates = Array.isArray(geometry.coordinates) ? geometry.coordinates : [];
+        if (coordinates.length < 2) throw new Error('OSRM 路线几何为空');
+        const durationSeconds = Number(route.duration) || 0;
+        const distanceMeters = Number(route.distance) || 0;
+        const variant = {
+          id: 'osrm-fast',
+          label: 'OSRM 驾车',
+          durationMinutes: Math.max(1, Math.ceil(durationSeconds / 60)),
+          distanceMeters: distanceMeters,
+          rawDurationSeconds: durationSeconds,
+          source: 'OSRM public demo · ' + new Date().toISOString().slice(0, 10),
+          verified: false,
+          coordinates: coordinates
+        };
+        const taxi = Object.assign({}, global.routes.taxi, {
+          durationMinutes: variant.durationMinutes,
+          distanceMeters: distanceMeters,
+          rawDurationSeconds: durationSeconds,
+          source: variant.source,
+          verified: false,
+          coordinates: coordinates,
+          coordinateSystem: 'WGS84',
+          variants: [variant]
+        });
+        self.lastPlanError = '';
+        self.onRoutesReady({ taxi: taxi });
+        return { taxi: taxi };
+      }).catch(function (error) {
+        if (guard && !guard()) return null;
+        self.lastPlanError = (error && error.message) || 'OSRM 路线规划失败';
+        return null;
+      });
     }
 
     /* 无真实道路几何时折线只作弱化虚线示意。 */

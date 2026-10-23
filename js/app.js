@@ -166,8 +166,41 @@
         (route && route.variantId) || '', reason].join('|');
     }
 
+    /* 端点是否齐全：起终点都填了才有"规划失败"这回事，否则只是待输入。 */
+    function hasBothEndpoints() {
+      const eps = (mapController && typeof mapController.getEndpoints === 'function')
+        ? mapController.getEndpoints() : {};
+      return !!(eps && eps.campus && eps.campus.coordinate && eps.station && eps.station.coordinate);
+    }
+
+    function endpointPrompt() {
+      const eps = (mapController && typeof mapController.getEndpoints === 'function')
+        ? mapController.getEndpoints() : {};
+      const hasOrigin = !!(eps && eps.campus && eps.campus.coordinate);
+      const hasDest = !!(eps && eps.station && eps.station.coordinate);
+      if (hasOrigin && hasDest) return null;
+      if (hasOrigin) return '已设置起点，请再输入终点，路线将自动生成。';
+      if (hasDest) return '请先输入起点，路线将自动生成。';
+      return '请输入起点和终点，路线将自动生成。';
+    }
+
     function markPlanFailed(reason) {
       planPending = false;
+      /* 端点不完整是"待输入"，不是"规划失败"：给引导而不是错误。 */
+      if (!hasBothEndpoints()) {
+        planFailure = null;
+        ['taxi', 'bus'].forEach(function (key) {
+          const route = global.routes[key];
+          if (!route) return;
+          route.failed = false;
+          route.reason = '';
+        });
+        ui.refreshRoutes();
+        lastRouteKey = null;
+        applyState(ui.getState());
+        ui.setStatus(endpointPrompt(), 'normal');
+        return;
+      }
       planFailure = reason || '路线规划失败';
       invalidateStaleRoutes();
       /* 没有可用几何的方式明确打上失败标记：界面不再把上一轮的行程时间当有效读数 */
@@ -286,6 +319,9 @@
     function routeNotice() {
       const state = ui.getState();
       const road = hasRoadGeometry(getSelectedRoute(state));
+      if (!hasBothEndpoints()) {
+        return { kind: 'preview', text: endpointPrompt() };
+      }
       if (planFailure) {
         return road
           ? { kind: 'demo', text: '本次规划失败：' + planFailure + ' · 显示内置演示几何（非本次规划结果）' }

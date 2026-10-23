@@ -170,19 +170,17 @@
     getEndpoints() { return this.endpoints; }
 
     /* 有在线规划能力才允许把"规划失败"当作失败处理；
-       OpenStreetMap 降级底图只能沿用内置几何。 */
+       高德降级到底图后，OSRM 仍可为任意起终点请求真实道路折线。 */
     supportsPlanning() {
-      return !!(this.map && this.ready && !this.fallbackMap && !this.fallback
+      if (this.fallbackMap) return this.fallbackMap.supportsPlanning();
+      return !!(this.map && this.ready && !this.fallback
         && global.AMap && global.AMap.Driving && global.AMap.Transfer);
     }
 
     replanRoutes(guard) {
+      if (this.fallbackMap) return this.fallbackMap.replanRoutes(guard);
       if (!this.map || !this.ready) {
         this.lastPlanError = '地图尚未就绪';
-        return Promise.resolve(null);
-      }
-      if (this.fallbackMap) {
-        this.lastPlanError = '已降级到 OpenStreetMap，无在线路线规划';
         return Promise.resolve(null);
       }
       return this.planRoutes(guard);
@@ -285,7 +283,7 @@
       const self = this;
       this.fallbackMap = new global.RiskTideMap();
       return this.fallbackMap.init(Object.assign({}, this.options, {
-        onRoutesReady: null,
+        onRoutesReady: this.onRoutesReady,
         onStatus: function (status) { self.onStatus(status); }
       })).then(function () { return false; }).catch(function () { return false; });
     }

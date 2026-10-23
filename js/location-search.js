@@ -1,4 +1,4 @@
-﻿/* global window, document, AMap */
+/* global window, document, AMap */
 (function (global) {
   'use strict';
 
@@ -169,7 +169,7 @@
 
 
   LocationSearch.prototype.commit = function (coordinate, meta) {
-    var role = this.role === 'dest' ? 'station' : (this.role || 'campus');
+    var role = this.role === 'dest' ? 'station' : 'campus';
     var input = role === 'campus' ? this.originInput : this.destInput;
     var name = (meta && (meta.name || meta.shortName)) || (input ? input.value : '');
     var wgs = gcj02ToWgs84(coordinate[0], coordinate[1]);
