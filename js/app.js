@@ -37,6 +37,8 @@
         ? new global.RiskTideInkFlow(silkCanvas, mapController)
         : null);
     const ui = new global.RiskTideUI(global.routes);
+  /* 无默认起终点时，内置演示几何不再对应任何端点：启动即清空，避免画出旧路线 */
+  invalidateStaleRoutes();
 
     /* The ink-map palette lives in data/config.js; publish it to CSS so the
        pigment blooms, the map filter and the paper grain have one source of

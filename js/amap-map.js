@@ -146,8 +146,8 @@
       this.settleTimer = 0;
       this.planSeqSeen = 0;
       this.endpoints = {
-        campus: config.endpoints.campus,
-        station: config.endpoints.station
+        campus: null,
+        station: null
       };
       this.city = (config.amap && config.amap.city) || '无锡';
     }
@@ -161,6 +161,7 @@
         this.fallbackMap.setEndpoints(endpoints);
       }
       if (this.map && this.ready) {
+        if (!this.markers.campus || !this.markers.station) this.addMarkers();
         this.repositionMarkers();
         this.setRoute(null);
       }
@@ -295,6 +296,8 @@
 
     addMarkers() {
       if (!this.map) return;
+      if (!this.endpoints.campus || !this.endpoints.station
+          || !this.endpoints.campus.coordinate || !this.endpoints.station.coordinate) return;
       this.markers.campus = new AMap.Marker({
         position: new AMap.LngLat(toGcj(this.endpoints.campus.coordinate)[0], toGcj(this.endpoints.campus.coordinate)[1]),
         content: this.markerContent(this.endpoints.campus, 'assets/marker-campus.svg'),
@@ -312,7 +315,8 @@
     }
 
     repositionMarkers() {
-      if (!this.map || !this.markers.campus || !this.markers.station) return;
+      if (!this.map || !this.markers.campus || !this.markers.station
+          || !this.endpoints.campus || !this.endpoints.station) return;
       this.markers.campus.setPosition(new AMap.LngLat(toGcj(this.endpoints.campus.coordinate)[0], toGcj(this.endpoints.campus.coordinate)[1]));
       this.markers.station.setPosition(new AMap.LngLat(toGcj(this.endpoints.station.coordinate)[0], toGcj(this.endpoints.station.coordinate)[1]));
       this.markers.campus.setContent(this.markerContent(this.endpoints.campus, 'assets/marker-campus.svg'));
@@ -322,9 +326,13 @@
     addRouteLayer() {
       if (!this.map) return;
       /* AMap rejects an empty Polyline path and logs four console errors.
-         Seed both invisible geometry layers with the real endpoint pair; the
-         next setRoute() call replaces it with the planned route. */
-      const initialPath = [toGcj(this.endpoints.campus.coordinate), toGcj(this.endpoints.station.coordinate)];
+         Seed both invisible geometry layers with a dummy path when endpoints
+         are not yet set; the next setRoute() call replaces it with the planned route. */
+      const hasEndpoints = !!(this.endpoints.campus && this.endpoints.station
+        && this.endpoints.campus.coordinate && this.endpoints.station.coordinate);
+      const initialPath = hasEndpoints
+        ? [toGcj(this.endpoints.campus.coordinate), toGcj(this.endpoints.station.coordinate)]
+        : [[116.4, 39.9], [116.4, 39.9]];
       /* V4: the route is drawn by js/silk-route.js (18 semi-transparent ink
          strands). These two polylines are kept only as the faintest wet-ink
          bed underneath, so the route stays readable if the silk canvas ever
@@ -355,7 +363,10 @@
       if (this.fallbackMap) return this.fallbackMap.setRoute(route);
       if (!this.map) return;
       const hasRoute = route && route.coordinates && route.coordinates.length >= 2;
-      this.route = hasRoute ? route.coordinates : [this.endpoints.campus.coordinate, this.endpoints.station.coordinate];
+      const hasEndpoints = !!(this.endpoints.campus && this.endpoints.station
+        && this.endpoints.campus.coordinate && this.endpoints.station.coordinate);
+      this.route = hasRoute ? route.coordinates : (hasEndpoints
+        ? [this.endpoints.campus.coordinate, this.endpoints.station.coordinate] : []);
       this.routePreview = !hasRoute;
       this.projectCoordinatesAreGcj = !!(route && route.coordinateSystem === 'GCJ02');
       const gcjPath = this.route.map(this.projectCoordinatesAreGcj ? function (point) { return point.slice(); } : toGcj);
@@ -460,6 +471,11 @@
         return Promise.resolve(null);
       }
       const amapConfig = config.amap || {};
+      if (!this.endpoints.campus || !this.endpoints.station
+          || !this.endpoints.campus.coordinate || !this.endpoints.station.coordinate) {
+        this.lastPlanError = '请先设置起点和终点';
+        return Promise.resolve(null);
+      }
       const origin = toGcj(this.endpoints.campus.coordinate);
       const destination = toGcj(this.endpoints.station.coordinate);
       const drivingPolicies = amapConfig.drivingVariants || [];

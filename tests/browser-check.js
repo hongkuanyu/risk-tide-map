@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 /* 单程墨线 浏览器回归测试（真实 Edge/Chrome + CDP，不依赖 npm 包）。
    运行：node tests/browser-check.js            全部场景
         node tests/browser-check.js pan hover  只跑指定场景
@@ -293,12 +293,47 @@ const HELPERS_E = `
 
 /* 顺序即拼接顺序：E 的结尾负责关闭 window.__t 对象，必须放最后 */
 const HELPERS = HELPERS_A + HELPERS_B + HELPERS_C + HELPERS_D + HELPERS_F + HELPERS_E;
+/* 无默认起终点后，测试自注入演示起终点与合成路线几何，以便回归路由渲染 */
+const SEED = `(() => {
+  const app = window.RiskTideApp;
+  const eps = {
+    campus: { id: 'campus', name: '无锡学院校门口', shortName: '无锡学院', coordinate: [120.4660492, 31.5834765], coordinateSystem: 'WGS84', verified: false },
+    station: { id: 'station', name: '无锡东站大门口', shortName: '无锡东站', coordinate: [120.4548648, 31.5981564], coordinateSystem: 'WGS84', verified: false }
+  };
+  window.RiskTideConfig.endpoints = eps;
+  if (app && app.map && typeof app.map.setEndpoints === 'function') app.map.setEndpoints(eps);
+  function makeCoords(offset, scale) {
+    const coords = [];
+    for (let i = 0; i <= 48; i += 1) {
+      coords.push([
+        eps.campus.coordinate[0] + i * 0.00042 * scale + Math.sin(i / 3.5 + offset) * 0.0012,
+        eps.campus.coordinate[1] + i * 0.00034 * scale + Math.cos(i / 4 + offset) * 0.0010
+      ]);
+    }
+    return coords;
+  }
+  const variants = [
+    { id: 'osrm-fast', label: 'OSRM 快速路', durationMinutes: 4, distanceMeters: 3114.7, rawDurationSeconds: 225.1, source: 'OSRM public demo · test', sourceUrl: '', verified: false, coordinates: makeCoords(0, 1) },
+    { id: 'valhalla-main', label: 'Valhalla 推荐路', durationMinutes: 7, distanceMeters: 3121, rawDurationSeconds: 368.4, source: 'Valhalla OSM route · test', sourceUrl: '', verified: false, coordinates: makeCoords(1.2, 0.98) },
+    { id: 'valhalla-alt', label: 'Valhalla 备选路', durationMinutes: 9, distanceMeters: 3522, rawDurationSeconds: 480.1, source: 'Valhalla OSM alternate · test', sourceUrl: '', verified: false, coordinates: makeCoords(2.4, 0.96) }
+  ];
+  window.routes.taxi.coordinates = variants[0].coordinates;
+  window.routes.taxi.durationMinutes = 4;
+  window.routes.taxi.distanceMeters = 3114.7;
+  window.routes.taxi.rawDurationSeconds = 225.1;
+  window.routes.taxi.variants = variants;
+  if (app && app.ui && typeof app.ui.refreshRoutes === 'function') app.ui.refreshRoutes();
+  window.dispatchEvent(new CustomEvent('risktide:interaction'));
+  return 'ok';
+})()`;
+
 async function newPage(browser, opts) {
   const page = await openPage(browser, opts);
   const originalGoto = page.goto.bind(page);
   page.gotoRoute = async function (url, wait) {
     await originalGoto(url, wait);
     await page.evaluate(HELPERS);
+    await page.evaluate(SEED);
     return page;
   };
   return page;
@@ -1245,8 +1280,8 @@ async function scenarioFlow(page) {
     core.veinAlpha = 0.12;
     core.filament.count = 0;
     const cfg = core.highlight;
-    cfg.count = 2;
-    cfg.speed = 2.0;
+    cfg.count = 1;
+    cfg.speed = 1.2;
     return 'ok';
   })()`);
   await page.evaluate(`(() => {

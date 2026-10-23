@@ -2,29 +2,11 @@
 (function (global) {
   'use strict';
 
-  /*
-   * IMPORTANT DATA STATUS
-   * The two point coordinates below are preview coordinates only, deliberately
-   * marked "待核对". Replace them with coordinates from your own OSM query or
-   * manually verified navigation result before using this project for travel.
-   */
+  /* 默认不预设起终点：首次打开时起终点为空，由用户通过搜索/定位自行设置。
+     用户选择地点后，地图标记与路线会按真实坐标渲染。 */
   const endpoints = {
-    campus: {
-      id: 'campus',
-      name: '无锡学院校门口',
-      shortName: '无锡学院',
-      coordinate: [120.4660492, 31.5834765],
-      source: 'Photon geocoding · 2026-09-29 · 校门位置仍待现场核对',
-      verified: false
-    },
-    station: {
-      id: 'station',
-      name: '无锡东站大门口',
-      shortName: '无锡东站',
-      coordinate: [120.4548648, 31.5981564],
-      source: 'Photon geocoding · 2026-09-29 · 校门位置仍待现场核对',
-      verified: false
-    }
+    campus: null,
+    station: null
   };
 
   const config = {

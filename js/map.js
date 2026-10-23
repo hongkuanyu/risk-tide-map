@@ -62,10 +62,14 @@
     if (route && route.coordinates && route.coordinates.length >= 2) {
       return { coordinates: route.coordinates, preview: false };
     }
-    return {
-      coordinates: [fallback.campus.coordinate, fallback.station.coordinate],
-      preview: true
-    };
+    if (fallback && fallback.campus && fallback.station
+        && fallback.campus.coordinate && fallback.station.coordinate) {
+      return {
+        coordinates: [fallback.campus.coordinate, fallback.station.coordinate],
+        preview: true
+      };
+    }
+    return { coordinates: [], preview: true };
   }
 
   class RiskTideMap {
@@ -73,7 +77,7 @@
       this.map = null;
       this.container = null;
       this.canvasStage = null;
-      this.endpoints = { campus: config.endpoints.campus, station: config.endpoints.station };
+      this.endpoints = { campus: null, station: null };
       this.markers = {};
       this.route = null;
       this.routePreview = true;
@@ -265,6 +269,8 @@
 
     addMarkers() {
       if (!this.map) return;
+      if (!this.endpoints.campus || !this.endpoints.station
+          || !this.endpoints.campus.coordinate || !this.endpoints.station.coordinate) return;
       const endpoints = this.endpoints;
 
       const campusElement = document.createElement('div');
@@ -291,6 +297,7 @@
       if (endpoints.campus) this.endpoints.campus = endpoints.campus;
       if (endpoints.station) this.endpoints.station = endpoints.station;
       if (!this.map || !this.ready) return;
+      if (!this.markers.campus || !this.markers.station) this.addMarkers();
       this.repositionMarkers();
       // Rebuild the preview geometry from the new endpoints so the map and
       // the particle flow both move immediately, before the router answers.
@@ -311,7 +318,8 @@
     }
 
     repositionMarkers() {
-      if (!this.markers.campus || !this.markers.station) return;
+      if (!this.markers.campus || !this.markers.station
+          || !this.endpoints.campus || !this.endpoints.station) return;
       this.markers.campus.setLngLat(this.endpoints.campus.coordinate);
       this.markers.station.setLngLat(this.endpoints.station.coordinate);
       const campusLabel = this.markers.campus.getElement().querySelector('.marker-label');
@@ -333,7 +341,10 @@
     setRoute(route) {
       const geometry = route && route.coordinates && route.coordinates.length >= 2
         ? routeGeometry(route, this.endpoints)
-        : { coordinates: [this.endpoints.campus.coordinate, this.endpoints.station.coordinate], preview: true };
+        : ((this.endpoints.campus && this.endpoints.station
+            && this.endpoints.campus.coordinate && this.endpoints.station.coordinate)
+          ? { coordinates: [this.endpoints.campus.coordinate, this.endpoints.station.coordinate], preview: true }
+          : { coordinates: [], preview: true });
       this.route = geometry.coordinates;
       this.routePreview = geometry.preview;
       this.updateFallbackOverlay();
@@ -451,8 +462,10 @@
         return marker;
       };
 
-      const campusMarker = makeMarker(config.endpoints.campus, 'campus-marker', 'assets/marker-campus.svg');
-      const stationMarker = makeMarker(config.endpoints.station, 'station-marker', 'assets/marker-station.svg');
+      const campusMarker = (this.endpoints.campus && this.endpoints.campus.coordinate)
+        ? makeMarker(this.endpoints.campus, 'campus-marker', 'assets/marker-campus.svg') : null;
+      const stationMarker = (this.endpoints.station && this.endpoints.station.coordinate)
+        ? makeMarker(this.endpoints.station, 'station-marker', 'assets/marker-station.svg') : null;
       layer.insertBefore(svg, layer.firstChild);
       this.canvasStage.appendChild(layer);
       this.fallbackLayer = layer;
@@ -482,9 +495,11 @@
       this.fallbackSvg.setAttribute('width', String(width));
       this.fallbackSvg.setAttribute('height', String(height));
 
+      const hasEndpoints = !!(this.endpoints.campus && this.endpoints.station
+        && this.endpoints.campus.coordinate && this.endpoints.station.coordinate);
       const coordinates = this.route && this.route.length >= 2
         ? this.route
-        : [config.endpoints.campus.coordinate, config.endpoints.station.coordinate];
+        : (hasEndpoints ? [this.endpoints.campus.coordinate, this.endpoints.station.coordinate] : []);
       const points = [];
       for (let i = 0; i < coordinates.length; i += 1) {
         const point = this.project(coordinates[i]);
@@ -493,12 +508,14 @@
       this.fallbackPolyline.setAttribute('points', points.join(' '));
       this.fallbackPolyline.setAttribute('class', this.routePreview ? 'fallback-route-line is-preview' : 'fallback-route-line');
 
-      const campusPoint = this.project(config.endpoints.campus.coordinate);
-      const stationPoint = this.project(config.endpoints.station.coordinate);
-      this.fallbackMarkers.campus.style.left = campusPoint.x + 'px';
-      this.fallbackMarkers.campus.style.top = campusPoint.y + 'px';
-      this.fallbackMarkers.station.style.left = stationPoint.x + 'px';
-      this.fallbackMarkers.station.style.top = stationPoint.y + 'px';
+      if (hasEndpoints && this.fallbackMarkers.campus && this.fallbackMarkers.station) {
+        const campusPoint = this.project(this.endpoints.campus.coordinate);
+        const stationPoint = this.project(this.endpoints.station.coordinate);
+        this.fallbackMarkers.campus.style.left = campusPoint.x + 'px';
+        this.fallbackMarkers.campus.style.top = campusPoint.y + 'px';
+        this.fallbackMarkers.station.style.left = stationPoint.x + 'px';
+        this.fallbackMarkers.station.style.top = stationPoint.y + 'px';
+      }
     }
     resize() {
       if (this.map && typeof this.map.resize === 'function') this.map.resize();
