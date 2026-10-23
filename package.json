@@ -2,7 +2,7 @@
   "name": "risk-tide-map",
   "version": "1.0.0",
   "private": true,
-  "description": "水墨星云互动风险地图：无锡学院到无锡东站",
+  "description": "水墨星云互动风险地图：一张高铁票的最后一小时",
   "scripts": {
     "start": "node serve.js",
     "test": "node scripts/verify-site.js",

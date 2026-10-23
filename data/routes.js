@@ -689,7 +689,7 @@
       sourceUrl: '',
       verified: false,
       variants: taxiVariants,
-      notes: '三套道路几何来自 OSRM/Valhalla 公共演示服务；精确校门和站前入口仍待现场核对。'
+      notes: '三套道路几何来自 OSRM/Valhalla 公共演示服务；精确起终点入口仍待现场核对。'
     }, taxiVariants[0], {
       id: 'taxi',
       label: '网约车',

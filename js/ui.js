@@ -314,7 +314,7 @@
         this.elements.routeWarning.textContent = route.label + '路线数据尚未录入；预计时间可手动填写，但不会生成真实路线几何。';
         this.elements.routeWarning.dataset.type = 'warning';
       } else if (!routeIsVerified) {
-        this.elements.routeWarning.textContent = route.label + '路线几何已载入；校门、站前入口和预计时间仍待核对。';
+        this.elements.routeWarning.textContent = route.label + '路线几何已载入；起终点入口和预计时间仍待核对。';
         this.elements.routeWarning.dataset.type = 'warning';
       } else {
         this.elements.routeWarning.textContent = '路线来源已标记为人工核验。';
